@@ -3,7 +3,7 @@
 use serde::Serialize;
 use typed_builder::TypedBuilder;
 
-use super::{Part, SafetySetting};
+use super::{model_params::GenerationConfig, Part, SafetySetting};
 
 /// A request to the Gemini AI API.
 #[derive(Debug, Clone, Serialize, TypedBuilder)]
@@ -12,6 +12,11 @@ pub struct Request {
     /// The contents of the request, including the prompt text.
     #[builder(setter(into))]
     pub contents: Vec<Content>,
+
+    /// Optional configuration for text generation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option, into))]
+    pub generation_config: Option<GenerationConfig>,
 
     /// Optional system instruction for the model
     #[serde(skip_serializing_if = "Option::is_none")]

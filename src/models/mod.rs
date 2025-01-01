@@ -6,9 +6,10 @@ mod request;
 mod request_type;
 mod response;
 mod safety;
+mod schema;
 mod stream;
 
-pub use model_params::ModelParams;
+pub use model_params::{GenerationConfig, ModelParams};
 pub use part::Part;
 pub use request::{Content, Request};
 pub use request_type::RequestType;
@@ -16,4 +17,8 @@ pub use response::{
     Candidate, CandidateContent, Response, SafetyProbability, SafetyRating, UsageMetadata,
 };
 pub use safety::{HarmCategory, SafetySetting, SafetyThreshold};
+pub use schema::SchemaType;
 pub use stream::ContentStream;
+
+/// Alias for the Schema type
+pub type ResponseSchema = schema::Schema;

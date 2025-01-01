@@ -71,8 +71,12 @@ impl GenerativeModel {
     async fn make_request(
         &self,
         url: &str,
-        request: Request,
+        mut request: Request,
     ) -> Result<reqwest::Response, GoogleGenerativeAIError> {
+        request.generation_config = request
+            .generation_config
+            .or_else(|| self.params.generation_config.clone());
+
         let response = self.client.post(url).json(&request).send().await?;
 
         let status = response.status();
@@ -185,9 +189,25 @@ impl GenerativeModel {
 
                                         if object_depth == 0 && in_object {
                                             in_object = false;
-                                            if let Ok(response) = serde_json::from_str(&buffer) {
-                                                if tx.send(Ok(response)).await.is_err() {
-                                                    return;
+                                            match serde_json::from_str(&buffer) {
+                                                Ok(response) => {
+                                                    if tx.send(Ok(response)).await.is_err() {
+                                                        return;
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    if tx
+                                                        .send(Err(GoogleGenerativeAIError::new(
+                                                            format!(
+                                                                "Failed to parse response: {}",
+                                                                e
+                                                            ),
+                                                        )))
+                                                        .await
+                                                        .is_err()
+                                                    {
+                                                        return;
+                                                    }
                                                 }
                                             }
                                             buffer.clear();
