@@ -1,0 +1,32 @@
+@baseUrl = https://generativelanguage.googleapis.com/v1beta
+@apiKey = {{GOOGLE_API_KEY}}
+@model = gemini-1.5-flash
+
+### Generate Content using Gemini API
+# @name generateContent
+POST {{baseUrl}}/models/{{model}}:generateContent?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Explain how AI works"
+                }
+            ]
+        }
+    ]
+}
+
+### Response Structure
+# The response includes:
+# - candidates: Array of generated responses, each containing:
+#   - content: The generated text with parts and role
+#   - finishReason: Reason for completion (e.g., "STOP")
+#   - avgLogprobs: Average log probability score
+# - usageMetadata: Token usage statistics
+#   - promptTokenCount: Number of tokens in the prompt
+#   - candidatesTokenCount: Number of tokens in the response
+#   - totalTokenCount: Total tokens used
+# - modelVersion: Version of the model used (e.g., "gemini-1.5-flash")
