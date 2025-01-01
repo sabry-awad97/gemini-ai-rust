@@ -2,7 +2,7 @@
 
 use crate::{
     error::GeminiError,
-    models::{ModelParams, Request, Response},
+    models::{ModelParams, Request, RequestType, Response},
 };
 
 /// Default API endpoint for Google's Generative AI service
@@ -24,7 +24,7 @@ impl GenerativeModel {
     /// # Arguments
     ///
     /// * `api_key` - The API key for authentication
-    /// * `model` - The model identifier (e.g., "gemini-1.5-flash")
+    /// * `params` - The model parameters
     pub fn new(api_key: impl Into<String>, params: impl Into<ModelParams>) -> Self {
         Self {
             api_key: api_key.into(),
@@ -60,15 +60,10 @@ impl GenerativeModel {
     /// # Errors
     ///
     /// Returns an error if the API request fails or if the response cannot be parsed.
-    async fn make_request(&self, request: Request) -> Result<Response, GeminiError> {
-        let url = format!(
-            "{}/{}/models/{}:generateContent?key={}",
-            DEFAULT_BASE_URL, DEFAULT_API_VERSION, self.params.model, self.api_key
-        );
-
+    async fn make_request(&self, url: &str, request: Request) -> Result<Response, GeminiError> {
         let response = self
             .client
-            .post(&url)
+            .post(url)
             .json(&request)
             .send()
             .await?
@@ -76,6 +71,13 @@ impl GenerativeModel {
             .await?;
 
         Ok(response)
+    }
+
+    fn build_url(&self, request_type: RequestType) -> String {
+        format!(
+            "{}/{}/models/{}:{}?key={}",
+            DEFAULT_BASE_URL, DEFAULT_API_VERSION, self.params.model, request_type, self.api_key
+        )
     }
 
     /// Generates content using the Gemini AI API.
@@ -89,7 +91,8 @@ impl GenerativeModel {
     /// Returns an error if the API request fails or if the response cannot be parsed.
     pub async fn send_message(&self, prompt: impl Into<String>) -> Result<Response, GeminiError> {
         let request = Request::with_prompt(prompt);
-        self.make_request(request).await
+        let url = self.build_url(RequestType::GenerateContent);
+        self.make_request(&url, request).await
     }
 
     /// Generates content using the Gemini AI API with a system instruction.
@@ -106,6 +109,7 @@ impl GenerativeModel {
         &self,
         request: impl Into<Request>,
     ) -> Result<Response, GeminiError> {
-        self.make_request(request.into()).await
+        let url = self.build_url(RequestType::GenerateContent);
+        self.make_request(&url, request.into()).await
     }
 }

@@ -3,12 +3,14 @@
 mod model_params;
 mod part;
 mod request;
+mod request_type;
 mod response;
 mod safety;
 
 pub use model_params::ModelParams;
 pub use part::Part;
 pub use request::{Content, Request};
+pub use request_type::RequestType;
 pub use response::{
     Candidate, CandidateContent, Response, SafetyProbability, SafetyRating, UsageMetadata,
 };
