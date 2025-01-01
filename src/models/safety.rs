@@ -40,3 +40,12 @@ pub struct SafetySetting {
     /// The threshold level for filtering
     pub threshold: SafetyThreshold,
 }
+
+impl From<(HarmCategory, SafetyThreshold)> for SafetySetting {
+    fn from((category, threshold): (HarmCategory, SafetyThreshold)) -> Self {
+        Self {
+            category,
+            threshold,
+        }
+    }
+}

@@ -25,7 +25,7 @@ pub struct Request {
 
     /// Optional safety settings for content filtering
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[builder(default, setter(strip_option))]
+    #[builder(default, setter(strip_option, into))]
     pub safety_settings: Option<Vec<SafetySetting>>,
 }
 
