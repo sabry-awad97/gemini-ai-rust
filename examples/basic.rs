@@ -1,4 +1,7 @@
-use gemini_ai_rust::{client::GenerativeModel, models::Response};
+use gemini_ai_rust::{
+    client::GenerativeModel,
+    models::{ModelParams, Response},
+};
 
 /// Displays the response in a formatted way.
 pub fn display(response: &Response) {
@@ -31,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
 
     // Create client from environment variables
-    let client = GenerativeModel::from_env("gemini-1.5-flash")?;
+    let client = GenerativeModel::from_env(ModelParams::default())?;
 
     // Generate content
     let response = client.send_message("Explain how AI works").await?;

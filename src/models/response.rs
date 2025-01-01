@@ -45,7 +45,7 @@ pub struct Candidate {
     /// The reason why the generation finished.
     pub finish_reason: String,
     /// Safety ratings for different harm categories.
-    pub safety_ratings: Vec<SafetyRating>,
+    pub safety_ratings: Option<Vec<SafetyRating>>,
     /// Average log probabilities for the generation.
     pub avg_logprobs: f64,
 }

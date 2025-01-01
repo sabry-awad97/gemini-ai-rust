@@ -1,6 +1,6 @@
 use dotenv::dotenv;
 use gemini_ai_rust::{
-    models::{Content, Part, Request},
+    models::{Content, ModelParams, Part, Request},
     GenerativeModel,
 };
 #[tokio::main]
@@ -8,7 +8,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
     // Create a new client from environment variables
-    let client = GenerativeModel::from_env("gemini-1.5-flash")?;
+    let client = GenerativeModel::from_env(ModelParams::default())?;
 
     let request = Request::builder()
         .system_instruction(Content {

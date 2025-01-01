@@ -2,7 +2,7 @@
 
 use crate::{
     error::GeminiError,
-    models::{Request, Response},
+    models::{ModelParams, Request, Response},
 };
 
 /// Default API endpoint for Google's Generative AI service
@@ -14,7 +14,7 @@ const DEFAULT_API_VERSION: &str = "v1beta";
 #[derive(Debug, Clone)]
 pub struct GenerativeModel {
     api_key: String,
-    model: String,
+    params: ModelParams,
     client: reqwest::Client,
 }
 
@@ -25,10 +25,10 @@ impl GenerativeModel {
     ///
     /// * `api_key` - The API key for authentication
     /// * `model` - The model identifier (e.g., "gemini-1.5-flash")
-    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+    pub fn new(api_key: impl Into<String>, params: impl Into<ModelParams>) -> Self {
         Self {
             api_key: api_key.into(),
-            model: model.into(),
+            params: params.into(),
             client: reqwest::Client::new(),
         }
     }
@@ -46,9 +46,9 @@ impl GenerativeModel {
     /// # Errors
     ///
     /// Returns an error if the required environment variable is not set.
-    pub fn from_env(model: impl Into<String>) -> Result<Self, GeminiError> {
+    pub fn from_env(params: impl Into<ModelParams>) -> Result<Self, GeminiError> {
         let api_key = std::env::var("GOOGLE_API_KEY")?;
-        Ok(Self::new(api_key, model))
+        Ok(Self::new(api_key, params))
     }
 
     /// Makes a request to the Gemini AI API.
@@ -63,7 +63,7 @@ impl GenerativeModel {
     async fn make_request(&self, request: Request) -> Result<Response, GeminiError> {
         let url = format!(
             "{}/{}/models/{}:generateContent?key={}",
-            DEFAULT_BASE_URL, DEFAULT_API_VERSION, self.model, self.api_key
+            DEFAULT_BASE_URL, DEFAULT_API_VERSION, self.params.model, self.api_key
         );
 
         let response = self

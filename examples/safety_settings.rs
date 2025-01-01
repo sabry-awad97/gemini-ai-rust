@@ -1,5 +1,5 @@
 use gemini_ai_rust::{
-    models::{Content, HarmCategory, Part, Request, SafetySetting, SafetyThreshold},
+    models::{Content, HarmCategory, ModelParams, Part, Request, SafetySetting, SafetyThreshold},
     GenerativeModel,
 };
 
@@ -8,7 +8,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
 
     // Create a new client from environment variables
-    let client = GenerativeModel::from_env("gemini-1.5-flash")?;
+    let client = GenerativeModel::from_env(ModelParams::default())?;
 
     let request = Request::builder()
             .contents(vec![Content {
