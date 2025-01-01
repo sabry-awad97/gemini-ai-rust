@@ -54,5 +54,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Display the response
     println!("{}", response.text());
 
+    let response = client
+        .send_message(
+            r#"List a few popular cookie recipes using this JSON schema:
+
+            Recipe = {\"recipe_name\": str, \"description\": str}
+            Return: list[Recipe]"#,
+        )
+        .await?;
+
+    println!("{}", "*".repeat(10));
+
+    println!("{}", response.text());
+
     Ok(())
 }
