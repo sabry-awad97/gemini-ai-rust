@@ -19,13 +19,13 @@ pub fn display(response: &Response) {
         for part in &candidate.content.parts {
             println!("{:?}", part);
         }
-        println!("\nFinish Reason: {}", candidate.finish_reason);
-        println!("Average Log Probability: {}", candidate.avg_logprobs);
+        println!("\nFinish Reason: {:?}", candidate.finish_reason);
+        println!("Average Log Probability: {:?}", candidate.avg_logprobs);
     }
 
     println!("\nUsage Statistics:");
     println!("Prompt Tokens: {}", usage_metadata.prompt_token_count);
-    println!("Response Tokens: {}", usage_metadata.candidates_token_count);
+    println!("Response Tokens: {:?}", usage_metadata.candidates_token_count);
     println!("Total Tokens: {}", usage_metadata.total_token_count);
 }
 

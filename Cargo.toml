@@ -7,11 +7,13 @@ description = "A Rust client for the Google Gemini AI API"
 license = "MIT"
 
 [dependencies]
-reqwest = { version = "0.12.12", features = ["json"] }
+futures = "0.3.31"
+reqwest = { version = "0.12.9", features = ["json", "stream", "multipart"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0.9"
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.42.0", features = ["full"] }
+tokio-stream = "0.1.17"
 typed-builder = "0.20.0"
 
 [dev-dependencies]

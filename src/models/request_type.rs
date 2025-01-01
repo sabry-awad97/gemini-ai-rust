@@ -1,19 +1,25 @@
-use std::fmt;
+use std::fmt::Display;
 
-/// The type of request to make to the API.
-#[derive(Debug, Copy, Clone)]
+/// Type of request to be made to the Gemini AI API.
+#[derive(Debug, Clone, Copy)]
 pub enum RequestType {
-    /// A request to generate content.
+    /// Generate content from a prompt
     GenerateContent,
-    /// A request to generate content in a streaming fashion.
+    /// Stream content from a prompt
     StreamGenerateContent,
+    /// Count tokens in a prompt
+    CountTokens,
+    /// Embed content
+    EmbedContent,
 }
 
-impl fmt::Display for RequestType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for RequestType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::GenerateContent => write!(f, "generateContent"),
             Self::StreamGenerateContent => write!(f, "streamGenerateContent"),
+            Self::CountTokens => write!(f, "countTokens"),
+            Self::EmbedContent => write!(f, "embedContent"),
         }
     }
 }

@@ -43,11 +43,11 @@ pub struct Candidate {
     /// The content of the candidate response.
     pub content: CandidateContent,
     /// The reason why the generation finished.
-    pub finish_reason: String,
+    pub finish_reason: Option<String>,
     /// Safety ratings for different harm categories.
     pub safety_ratings: Option<Vec<SafetyRating>>,
     /// Average log probabilities for the generation.
-    pub avg_logprobs: f64,
+    pub avg_logprobs: Option<f64>,
 }
 
 /// The content of a candidate response.
@@ -91,7 +91,7 @@ pub struct UsageMetadata {
     /// Number of tokens in the prompt.
     pub prompt_token_count: i32,
     /// Number of tokens in the generated candidates.
-    pub candidates_token_count: i32,
+    pub candidates_token_count: Option<i32>,
     /// Total number of tokens used.
     pub total_token_count: i32,
 }

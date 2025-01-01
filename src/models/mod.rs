@@ -6,6 +6,7 @@ mod request;
 mod request_type;
 mod response;
 mod safety;
+mod stream;
 
 pub use model_params::ModelParams;
 pub use part::Part;
@@ -15,3 +16,4 @@ pub use response::{
     Candidate, CandidateContent, Response, SafetyProbability, SafetyRating, UsageMetadata,
 };
 pub use safety::{HarmCategory, SafetySetting, SafetyThreshold};
+pub use stream::ContentStream;
