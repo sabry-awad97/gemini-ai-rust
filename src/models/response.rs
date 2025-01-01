@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use super::Part;
+use super::{HarmCategory, Part};
 
 /// A response from the Gemini AI API.
 #[derive(Debug, Clone, Deserialize)]
@@ -40,6 +40,8 @@ pub struct Candidate {
     pub content: CandidateContent,
     /// The reason why the generation finished.
     pub finish_reason: String,
+    /// Safety ratings for different harm categories.
+    pub safety_ratings: Vec<SafetyRating>,
     /// Average log probabilities for the generation.
     pub avg_logprobs: f64,
 }
@@ -52,6 +54,30 @@ pub struct CandidateContent {
     pub parts: Vec<Part>,
     /// The role of the content generator (e.g., "model").
     pub role: String,
+}
+
+/// Safety rating for a specific harm category.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SafetyRating {
+    /// The category of harm being rated.
+    pub category: HarmCategory,
+    /// The probability level of harmful content.
+    pub probability: SafetyProbability,
+}
+
+/// Probability level for safety ratings.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SafetyProbability {
+    /// Negligible probability of harmful content.
+    Negligible,
+    /// Low probability of harmful content.
+    Low,
+    /// Medium probability of harmful content.
+    Medium,
+    /// High probability of harmful content.
+    High,
 }
 
 /// Metadata about token usage in the request and response.

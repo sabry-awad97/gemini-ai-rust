@@ -2,7 +2,7 @@
 
 use crate::{
     error::GeminiError,
-    models::{Request, Response},
+    models::{Request, Response, SafetySetting},
 };
 
 /// Default API endpoint for Google's Generative AI service
@@ -51,20 +51,16 @@ impl GenerativeModel {
         Ok(Self::new(api_key, model))
     }
 
-    /// Generates content using the Gemini AI API.
+    /// Makes a request to the Gemini AI API.
     ///
     /// # Arguments
     ///
-    /// * `prompt` - The text prompt to generate content from
+    /// * `request` - The request to send to the API
     ///
     /// # Errors
     ///
     /// Returns an error if the API request fails or if the response cannot be parsed.
-    pub async fn generate_content(
-        &self,
-        prompt: impl Into<String>,
-    ) -> Result<Response, GeminiError> {
-        let request = Request::new(prompt);
+    async fn make_request(&self, request: Request) -> Result<Response, GeminiError> {
         let url = format!(
             "{}/{}/models/{}:generateContent?key={}",
             DEFAULT_BASE_URL, DEFAULT_API_VERSION, self.model, self.api_key
@@ -80,6 +76,23 @@ impl GenerativeModel {
             .await?;
 
         Ok(response)
+    }
+
+    /// Generates content using the Gemini AI API.
+    ///
+    /// # Arguments
+    ///
+    /// * `prompt` - The text prompt to generate content from
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails or if the response cannot be parsed.
+    pub async fn generate_content(
+        &self,
+        prompt: impl Into<String>,
+    ) -> Result<Response, GeminiError> {
+        let request = Request::new(prompt);
+        self.make_request(request).await
     }
 
     /// Generates content using the Gemini AI API with a system instruction.
@@ -98,20 +111,46 @@ impl GenerativeModel {
         prompt: impl Into<String>,
     ) -> Result<Response, GeminiError> {
         let request = Request::with_system_instruction(system_instruction, prompt);
-        let url = format!(
-            "{}/{}/models/{}:generateContent?key={}",
-            DEFAULT_BASE_URL, DEFAULT_API_VERSION, self.model, self.api_key
-        );
+        self.make_request(request).await
+    }
 
-        let response = self
-            .client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await?
-            .json::<Response>()
-            .await?;
+    /// Generates content using the Gemini AI API with safety settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `prompt` - The text prompt to generate content from
+    /// * `safety_settings` - List of safety settings to apply
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails or if the response cannot be parsed.
+    pub async fn generate_content_with_safety(
+        &self,
+        prompt: impl Into<String>,
+        safety_settings: Vec<SafetySetting>,
+    ) -> Result<Response, GeminiError> {
+        let request = Request::with_safety_settings(prompt, safety_settings);
+        self.make_request(request).await
+    }
 
-        Ok(response)
+    /// Generates content using the Gemini AI API with both system instruction and safety settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `system_instruction` - The system instruction for the model
+    /// * `prompt` - The text prompt to generate content from
+    /// * `safety_settings` - List of safety settings to apply
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails or if the response cannot be parsed.
+    pub async fn generate_content_with_system_and_safety(
+        &self,
+        system_instruction: impl Into<String>,
+        prompt: impl Into<String>,
+        safety_settings: Vec<SafetySetting>,
+    ) -> Result<Response, GeminiError> {
+        let request = Request::with_system_and_safety(system_instruction, prompt, safety_settings);
+        self.make_request(request).await
     }
 }
