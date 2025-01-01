@@ -16,6 +16,22 @@ pub struct Response {
     pub model_version: String,
 }
 
+impl Response {
+    /// Gets the text content from the first candidate's first part.
+    /// Returns an empty string if no text content is available.
+    pub fn text(&self) -> String {
+        self.candidates
+            .first()
+            .and_then(|candidate| {
+                candidate.content.parts.first().and_then(|part| match part {
+                    Part::Text { text } => Some(text),
+                    _ => None,
+                })
+            })
+            .map_or("".to_string(), |text| text.clone())
+    }
+}
+
 /// A candidate response from the model.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,29 +64,4 @@ pub struct UsageMetadata {
     pub candidates_token_count: i32,
     /// Total number of tokens used.
     pub total_token_count: i32,
-}
-
-impl Response {
-    /// Displays the response in a formatted way.
-    pub fn display(&self) {
-        println!("Response:");
-        println!("Model Version: {}", self.model_version);
-        println!("\nGenerated Text:");
-        for candidate in &self.candidates {
-            println!("Role: {}", candidate.content.role);
-            for part in &candidate.content.parts {
-                println!("{}", part.text);
-            }
-            println!("\nFinish Reason: {}", candidate.finish_reason);
-            println!("Average Log Probability: {}", candidate.avg_logprobs);
-        }
-
-        println!("\nUsage Statistics:");
-        println!("Prompt Tokens: {}", self.usage_metadata.prompt_token_count);
-        println!(
-            "Response Tokens: {}",
-            self.usage_metadata.candidates_token_count
-        );
-        println!("Total Tokens: {}", self.usage_metadata.total_token_count);
-    }
 }

@@ -81,4 +81,37 @@ impl GenerativeModel {
 
         Ok(response)
     }
+
+    /// Generates content using the Gemini AI API with a system instruction.
+    ///
+    /// # Arguments
+    ///
+    /// * `system_instruction` - The system instruction for the model
+    /// * `prompt` - The text prompt to generate content from
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails or if the response cannot be parsed.
+    pub async fn generate_content_with_system(
+        &self,
+        system_instruction: impl Into<String>,
+        prompt: impl Into<String>,
+    ) -> Result<Response, GeminiError> {
+        let request = Request::with_system_instruction(system_instruction, prompt);
+        let url = format!(
+            "{}/{}/models/{}:generateContent?key={}",
+            DEFAULT_BASE_URL, DEFAULT_API_VERSION, self.model, self.api_key
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await?
+            .json::<Response>()
+            .await?;
+
+        Ok(response)
+    }
 }

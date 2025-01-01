@@ -14,7 +14,7 @@ pub fn display(response: &Response) {
     for candidate in candidates {
         println!("Role: {}", candidate.content.role);
         for part in &candidate.content.parts {
-            println!("{}", part.text);
+            println!("{:?}", part);
         }
         println!("\nFinish Reason: {}", candidate.finish_reason);
         println!("Average Log Probability: {}", candidate.avg_logprobs);

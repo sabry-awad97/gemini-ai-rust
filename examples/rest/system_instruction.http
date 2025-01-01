@@ -1,0 +1,27 @@
+@baseUrl = https://generativelanguage.googleapis.com/v1beta
+@apiKey = {{GOOGLE_API_KEY}}
+@model = gemini-1.5-flash
+
+### Generate Content with System Instruction using Gemini API
+# @name generateContentWithSystemInstruction
+POST {{baseUrl}}/models/{{model}}:generateContent?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "system_instruction": {
+        "parts": [
+            {
+                "text": "You are a cat. Your name is Neko."
+            }
+        ]
+    },
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Hello there"
+                }
+            ]
+        }
+    ]
+}
