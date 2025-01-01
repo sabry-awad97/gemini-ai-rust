@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = GenerativeModel::from_env("gemini-1.5-flash")?;
 
     // Generate content
-    let response = client.generate_content("Explain how AI works").await?;
+    let response = client.send_message("Explain how AI works").await?;
 
     // Display the response
     display(&response);

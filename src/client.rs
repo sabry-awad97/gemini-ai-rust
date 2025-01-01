@@ -2,7 +2,7 @@
 
 use crate::{
     error::GeminiError,
-    models::{Request, Response, SafetySetting},
+    models::{Request, Response},
 };
 
 /// Default API endpoint for Google's Generative AI service
@@ -87,11 +87,8 @@ impl GenerativeModel {
     /// # Errors
     ///
     /// Returns an error if the API request fails or if the response cannot be parsed.
-    pub async fn generate_content(
-        &self,
-        prompt: impl Into<String>,
-    ) -> Result<Response, GeminiError> {
-        let request = Request::new(prompt);
+    pub async fn send_message(&self, prompt: impl Into<String>) -> Result<Response, GeminiError> {
+        let request = Request::with_prompt(prompt);
         self.make_request(request).await
     }
 
@@ -105,52 +102,10 @@ impl GenerativeModel {
     /// # Errors
     ///
     /// Returns an error if the API request fails or if the response cannot be parsed.
-    pub async fn generate_content_with_system(
+    pub async fn generate_content(
         &self,
-        system_instruction: impl Into<String>,
-        prompt: impl Into<String>,
+        request: impl Into<Request>,
     ) -> Result<Response, GeminiError> {
-        let request = Request::with_system_instruction(system_instruction, prompt);
-        self.make_request(request).await
-    }
-
-    /// Generates content using the Gemini AI API with safety settings.
-    ///
-    /// # Arguments
-    ///
-    /// * `prompt` - The text prompt to generate content from
-    /// * `safety_settings` - List of safety settings to apply
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails or if the response cannot be parsed.
-    pub async fn generate_content_with_safety(
-        &self,
-        prompt: impl Into<String>,
-        safety_settings: Vec<SafetySetting>,
-    ) -> Result<Response, GeminiError> {
-        let request = Request::with_safety_settings(prompt, safety_settings);
-        self.make_request(request).await
-    }
-
-    /// Generates content using the Gemini AI API with both system instruction and safety settings.
-    ///
-    /// # Arguments
-    ///
-    /// * `system_instruction` - The system instruction for the model
-    /// * `prompt` - The text prompt to generate content from
-    /// * `safety_settings` - List of safety settings to apply
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the API request fails or if the response cannot be parsed.
-    pub async fn generate_content_with_system_and_safety(
-        &self,
-        system_instruction: impl Into<String>,
-        prompt: impl Into<String>,
-        safety_settings: Vec<SafetySetting>,
-    ) -> Result<Response, GeminiError> {
-        let request = Request::with_system_and_safety(system_instruction, prompt, safety_settings);
-        self.make_request(request).await
+        self.make_request(request.into()).await
     }
 }

@@ -18,17 +18,21 @@ pub struct Response {
 
 impl Response {
     /// Gets the text content from the first candidate's first part.
-    /// Returns an empty string if no text content is available.
     pub fn text(&self) -> String {
         self.candidates
-            .first()
-            .and_then(|candidate| {
-                candidate.content.parts.first().and_then(|part| match part {
-                    Part::Text { text } => Some(text),
-                    _ => None,
-                })
+            .iter()
+            .flat_map(|candidate| {
+                candidate
+                    .content
+                    .parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        Part::Text { text } => Some(text.clone()),
+                        _ => None,
+                    })
             })
-            .map_or("".to_string(), |text| text.clone())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
