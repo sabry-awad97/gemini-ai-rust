@@ -54,9 +54,12 @@ impl GenerativeModel {
     /// # Errors
     ///
     /// Returns an error if the required environment variable is not set.
-    pub fn from_env(params: impl Into<ModelParams>) -> Result<Self, GoogleGenerativeAIError> {
+    pub fn from_env(model: impl Into<String>) -> Result<Self, GoogleGenerativeAIError> {
         let api_key = std::env::var("GOOGLE_API_KEY")?;
-        Ok(Self::new(api_key, params))
+        Ok(Self::new(
+            api_key,
+            ModelParams::builder().model(model).build(),
+        ))
     }
 
     /// Makes a request to the Gemini AI API.
