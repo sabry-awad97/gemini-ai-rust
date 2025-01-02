@@ -12,13 +12,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = GenerativeModel::from_env("gemini-1.5-flash")?;
 
     // Prepare the request
+    let var_name = vec![Content {
+        role: Some(Role::User),
+        parts: vec![Part::Text {
+            text: "Write a story about a magic backpack.".into(),
+        }],
+    }];
     let request = Request::builder()
-        .contents(vec![Content {
-            role: Role::User,
-            parts: vec![Part::Text {
-                text: "Write a story about a magic backpack.".into(),
-            }],
-        }])
+        .contents(var_name)
         .safety_settings([(
             HarmCategory::HarmCategoryDangerousContent,
             SafetyThreshold::BlockOnlyHigh,
@@ -35,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .build();
 
-    let response = client.generate_content(request).await?;
+    let response = client.generate_response(request).await?;
 
     // Display the response
     println!("{}", response.text());

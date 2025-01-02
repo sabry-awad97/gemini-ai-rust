@@ -9,12 +9,12 @@ use crate::error::GoogleGenerativeAIError;
 
 use super::Response;
 
-/// A custom stream for generating content
-pub struct ContentStream {
+/// A custom stream for generating response
+pub struct ResponseStream {
     receiver: tokio::sync::mpsc::Receiver<Result<Response, GoogleGenerativeAIError>>,
 }
 
-impl ContentStream {
+impl ResponseStream {
     /// Creates a new ContentStream
     pub fn new(
         receiver: tokio::sync::mpsc::Receiver<Result<Response, GoogleGenerativeAIError>>,
@@ -23,7 +23,7 @@ impl ContentStream {
     }
 }
 
-impl Stream for ContentStream {
+impl Stream for ResponseStream {
     type Item = Result<Response, GoogleGenerativeAIError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {

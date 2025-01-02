@@ -20,7 +20,7 @@ pub struct Request {
 
     /// Optional system instruction for the model
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[builder(default, setter(strip_option, into))]
+    #[builder(default, setter(into))]
     pub system_instruction: Option<Content>,
 
     /// Optional safety settings for content filtering
@@ -37,15 +37,14 @@ pub enum Role {
     User,
     /// The model role
     Model,
-    /// The system role
-    System,
 }
 
 /// A content object containing parts of the request.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Content {
     /// The role of the content
-    pub role: Role,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
     /// The parts that make up the content.
     pub parts: Vec<Part>,
 }
@@ -59,7 +58,7 @@ impl Request {
     pub fn with_prompt(text: impl Into<String>) -> Self {
         Self::builder()
             .contents(vec![Content {
-                role: Role::User,
+                role: Some(Role::User),
                 parts: vec![Part::Text { text: text.into() }],
             }])
             .build()

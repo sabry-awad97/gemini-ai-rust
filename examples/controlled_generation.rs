@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Prepare the request
     let request = Request::builder()
         .contents(vec![Content {
-            role: Role::User,
+            role: Some(Role::User),
             parts: vec![Part::Text {
                 text: "List 5 popular cookie recipes".into(),
             }],
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .build();
 
-    let response = client.generate_content(request).await?;
+    let response = client.generate_response(request).await?;
 
     // Display the response
     println!("{}", response.text());

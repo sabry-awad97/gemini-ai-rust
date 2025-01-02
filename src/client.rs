@@ -3,7 +3,7 @@
 use futures::StreamExt;
 use tokio::sync::mpsc;
 
-use crate::models::ContentStream;
+use crate::models::ResponseStream;
 use crate::{
     error::GoogleGenerativeAIError,
     models::{ModelParams, Request, RequestType, Response},
@@ -128,7 +128,7 @@ impl GenerativeModel {
         Ok(self.make_request(&url, request).await?.json().await?)
     }
 
-    /// Generates content using the Gemini AI API with a system instruction.
+    /// Generates response using the Gemini AI API with a system instruction.
     ///
     /// # Arguments
     ///
@@ -138,7 +138,7 @@ impl GenerativeModel {
     /// # Errors
     ///
     /// Returns an error if the API request fails or if the response cannot be parsed.
-    pub async fn generate_content(
+    pub async fn generate_response(
         &self,
         request: impl Into<Request>,
     ) -> Result<Response, GoogleGenerativeAIError> {
@@ -147,10 +147,10 @@ impl GenerativeModel {
     }
 
     /// Generates streaming content using the Gemini AI API.
-    pub async fn stream_generate_content(
+    pub async fn stream_generate_response(
         &self,
         request: impl Into<Request>,
-    ) -> Result<ContentStream, GoogleGenerativeAIError> {
+    ) -> Result<ResponseStream, GoogleGenerativeAIError> {
         let url = self.build_url(RequestType::StreamGenerateContent);
         let response = self.make_request(&url, request.into()).await?;
 
@@ -252,6 +252,6 @@ impl GenerativeModel {
             }
         });
 
-        Ok(ContentStream::new(rx))
+        Ok(ResponseStream::new(rx))
     }
 }

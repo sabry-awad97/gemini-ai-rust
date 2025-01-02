@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = Request::builder()
             .contents(vec![Content {
-                role: Role::User,
+                role: Some(Role::User),
                 parts: vec![Part::Text { text: "I support Martians Soccer Club and I think Jupiterians Football Club sucks! Write a ironic phrase about them.".into() }],
             }])
             .safety_settings(vec![
@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .build();
 
     // Generate content with safety settings
-    let response = client.generate_content(request).await?;
+    let response = client.generate_response(request).await?;
 
     // Display the response
     println!("{}", response.text());

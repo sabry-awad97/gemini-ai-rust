@@ -17,13 +17,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Prepare the request
     let request = Request::builder()
         .system_instruction(Content {
-            role: Role::System,
+            role: None,
             parts: vec![Part::Text {
                 text: "You are a helpful assistant that translates English to German.".into(),
             }],
         })
         .contents(vec![Content {
-            role: Role::User,
+            role: Some(Role::User),
             parts: vec![Part::Text {
                 text: "How are you?".into(),
             }],
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     // Stream the response
-    let mut stream = client.stream_generate_content(request).await?;
+    let mut stream = client.stream_generate_response(request).await?;
 
     while let Some(response) = stream.next().await {
         match response {

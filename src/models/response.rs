@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use super::{HarmCategory, Part};
+use super::{Content, HarmCategory, Part};
 
 /// A response from the Gemini AI API.
 #[derive(Debug, Clone, Deserialize)]
@@ -41,23 +41,13 @@ impl Response {
 #[serde(rename_all = "camelCase")]
 pub struct Candidate {
     /// The content of the candidate response.
-    pub content: CandidateContent,
+    pub content: Content,
     /// The reason why the generation finished.
     pub finish_reason: Option<FinishReason>,
     /// Safety ratings for different harm categories.
     pub safety_ratings: Option<Vec<SafetyRating>>,
     /// Average log probabilities for the generation.
     pub avg_logprobs: Option<f64>,
-}
-
-/// The content of a candidate response.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CandidateContent {
-    /// The parts that make up the content.
-    pub parts: Vec<Part>,
-    /// The role of the content generator (e.g., "model").
-    pub role: String,
 }
 
 /// Safety rating for a specific harm category.

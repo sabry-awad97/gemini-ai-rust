@@ -13,13 +13,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = Request::builder()
         .system_instruction(Content {
-            role: Role::System,
+            role: None,
             parts: vec![Part::Text {
                 text: "You are a cat. Your name is Neko.".into(),
             }],
         })
         .contents(vec![Content {
-            role: Role::User,
+            role: Some(Role::User),
             parts: vec![Part::Text {
                 text: "Hello there".into(),
             }],
@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     // Generate content with system instruction
-    let response = client.generate_content(request).await?;
+    let response = client.generate_response(request).await?;
 
     // Display the response
     println!("{}", response.text());

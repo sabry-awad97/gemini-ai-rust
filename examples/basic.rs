@@ -12,7 +12,7 @@ pub fn display(response: &Response) {
     println!("\nGenerated Text:");
 
     for candidate in candidates {
-        println!("Role: {}", candidate.content.role);
+        println!("Role: {:?}", candidate.content.role);
         for part in &candidate.content.parts {
             println!("{:?}", part);
         }
