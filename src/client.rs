@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::models::ResponseStream;
 use crate::{
     error::GoogleGenerativeAIError,
-    models::{ModelParams, Request, RequestType, Response},
+    models::{ModelParams, Request, RequestType, Response, TokenCountResponse},
 };
 
 /// Default API endpoint for Google's Generative AI service
@@ -125,7 +125,7 @@ impl GenerativeModel {
     ) -> Result<Response, GoogleGenerativeAIError> {
         let request = Request::with_prompt(prompt);
         let url = self.build_url(RequestType::GenerateContent);
-        Ok(self.make_request(&url, request).await?.json().await?)
+        self.send_request(&url, request).await
     }
 
     /// Generates response using the Gemini AI API with a system instruction.
@@ -253,5 +253,22 @@ impl GenerativeModel {
         });
 
         Ok(ResponseStream::new(rx))
+    }
+
+    /// Counts the number of tokens in the given content.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The request containing the content to count tokens for
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the API request fails or if the response cannot be parsed.
+    pub async fn count_tokens(
+        &self,
+        request: impl Into<Request>,
+    ) -> Result<TokenCountResponse, GoogleGenerativeAIError> {
+        let url = self.build_url(RequestType::CountTokens);
+        self.send_request(&url, request.into()).await
     }
 }

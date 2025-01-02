@@ -1,16 +1,14 @@
 use std::fmt::Display;
 
-/// Type of request to be made to the Gemini AI API.
+/// Type of request to be made to the API.
 #[derive(Debug, Clone, Copy)]
 pub enum RequestType {
-    /// Generate content from a prompt
+    /// Generate content
     GenerateContent,
-    /// Stream content from a prompt
+    /// Stream generate content
     StreamGenerateContent,
-    /// Count tokens in a prompt
+    /// Count tokens in content
     CountTokens,
-    /// Embed content
-    EmbedContent,
 }
 
 impl Display for RequestType {
@@ -19,7 +17,6 @@ impl Display for RequestType {
             Self::GenerateContent => write!(f, "generateContent"),
             Self::StreamGenerateContent => write!(f, "streamGenerateContent"),
             Self::CountTokens => write!(f, "countTokens"),
-            Self::EmbedContent => write!(f, "embedContent"),
         }
     }
 }

@@ -13,7 +13,7 @@ pub use model_params::{GenerationConfig, ModelParams};
 pub use part::Part;
 pub use request::{Content, Request, Role};
 pub use request_type::RequestType;
-pub use response::{Candidate, Response, SafetyProbability, SafetyRating, UsageMetadata};
+pub use response::{Candidate, Response, SafetyProbability, SafetyRating, TokenCountResponse, UsageMetadata};
 pub use safety::{HarmCategory, SafetySetting, SafetyThreshold};
 pub use schema::SchemaType;
 pub use stream::ResponseStream;

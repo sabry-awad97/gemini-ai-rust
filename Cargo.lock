@@ -270,8 +270,10 @@ dependencies = [
 name = "gemini-ai-rust"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "dotenv",
  "futures",
+ "mime_guess",
  "reqwest",
  "serde",
  "serde_json",

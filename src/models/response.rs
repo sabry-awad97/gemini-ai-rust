@@ -114,3 +114,11 @@ pub struct UsageMetadata {
     /// Total number of tokens used.
     pub total_token_count: i32,
 }
+
+/// Response from token counting.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TokenCountResponse {
+    /// Total number of tokens in the request.
+    #[serde(rename = "totalTokens")]
+    pub total_tokens: i32,
+}
