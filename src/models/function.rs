@@ -56,21 +56,23 @@ pub struct FunctionDeclaration {
 /// A function call made by the model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FunctionCall {
+#[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
+pub struct FunctionCall<T = serde_json::Value> {
     /// The name of the function to call.
     pub name: String,
 
     /// The arguments to pass to the function.
-    pub args: serde_json::Value,
+    pub args: T,
 }
 
 /// A response to a function call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FunctionResponse {
+#[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
+pub struct FunctionResponse<T = serde_json::Value> {
     /// The name of the function that was called.
     pub name: String,
 
     /// The response from the function.
-    pub response: serde_json::Value,
+    pub response: T,
 }
