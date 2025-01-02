@@ -1,6 +1,6 @@
 use dotenv::dotenv;
 use gemini_ai_rust::{
-    models::{Content, Part, Request},
+    models::{Content, Part, Request, Role},
     GenerativeModel,
 };
 
@@ -13,11 +13,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = Request::builder()
         .system_instruction(Content {
+            role: Role::System,
             parts: vec![Part::Text {
                 text: "You are a cat. Your name is Neko.".into(),
             }],
         })
         .contents(vec![Content {
+            role: Role::User,
             parts: vec![Part::Text {
                 text: "Hello there".into(),
             }],

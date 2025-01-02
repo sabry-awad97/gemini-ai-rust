@@ -1,6 +1,6 @@
 //! Request models for the Gemini AI API.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 
 use super::{model_params::GenerationConfig, Part, SafetySetting};
@@ -29,9 +29,23 @@ pub struct Request {
     pub safety_settings: Option<Vec<SafetySetting>>,
 }
 
+/// Role of a participant in a chat
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    /// The user role
+    User,
+    /// The model role
+    Model,
+    /// The system role
+    System,
+}
+
 /// A content object containing parts of the request.
 #[derive(Debug, Clone, Serialize)]
 pub struct Content {
+    /// The role of the content
+    pub role: Role,
     /// The parts that make up the content.
     pub parts: Vec<Part>,
 }
@@ -45,6 +59,7 @@ impl Request {
     pub fn with_prompt(text: impl Into<String>) -> Self {
         Self::builder()
             .contents(vec![Content {
+                role: Role::User,
                 parts: vec![Part::Text { text: text.into() }],
             }])
             .build()

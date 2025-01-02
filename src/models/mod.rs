@@ -11,7 +11,7 @@ mod stream;
 
 pub use model_params::{GenerationConfig, ModelParams};
 pub use part::Part;
-pub use request::{Content, Request};
+pub use request::{Content, Request, Role};
 pub use request_type::RequestType;
 pub use response::{
     Candidate, CandidateContent, Response, SafetyProbability, SafetyRating, UsageMetadata,

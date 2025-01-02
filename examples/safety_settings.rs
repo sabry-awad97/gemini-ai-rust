@@ -1,5 +1,5 @@
 use gemini_ai_rust::{
-    models::{Content, HarmCategory, Part, Request, SafetySetting, SafetyThreshold},
+    models::{Content, HarmCategory, Part, Request, Role, SafetySetting, SafetyThreshold},
     GenerativeModel,
 };
 
@@ -12,6 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = Request::builder()
             .contents(vec![Content {
+                role: Role::User,
                 parts: vec![Part::Text { text: "I support Martians Soccer Club and I think Jupiterians Football Club sucks! Write a ironic phrase about them.".into() }],
             }])
             .safety_settings(vec![

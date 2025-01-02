@@ -1,7 +1,7 @@
 use dotenv::dotenv;
 use gemini_ai_rust::{
     client::GenerativeModel,
-    models::{Content, GenerationConfig, HarmCategory, Part, Request, SafetyThreshold},
+    models::{Content, GenerationConfig, HarmCategory, Part, Request, Role, SafetyThreshold},
 };
 
 #[tokio::main]
@@ -14,6 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Prepare the request
     let request = Request::builder()
         .contents(vec![Content {
+            role: Role::User,
             parts: vec![Part::Text {
                 text: "Write a story about a magic backpack.".into(),
             }],
