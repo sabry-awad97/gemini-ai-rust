@@ -3,7 +3,7 @@
 use futures::StreamExt;
 use tokio::sync::mpsc;
 
-use crate::models::ResponseStream;
+use crate::models::{ListModelsResponse, ModelInfo, ResponseStream};
 use crate::{
     error::GoogleGenerativeAIError,
     models::{ModelParams, Request, RequestType, Response, TokenCountResponse},
@@ -276,5 +276,46 @@ impl GenerativeModel {
     ) -> Result<TokenCountResponse, GoogleGenerativeAIError> {
         let url = self.build_url(RequestType::CountTokens);
         self.send_request(&url, request.into()).await
+    }
+
+    /// List all available models
+    pub async fn list_models(&self) -> Result<ListModelsResponse, GoogleGenerativeAIError> {
+        let url = format!("{}/{}/models", DEFAULT_BASE_URL, DEFAULT_API_VERSION);
+        let url = format!("{}?key={}", url, self.api_key);
+
+        let response = self.client.get(&url).send().await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(GoogleGenerativeAIError::new(format!(
+                "Failed to list models: {} - {}",
+                status, error_body
+            )));
+        }
+
+        Ok(response.json().await?)
+    }
+
+    /// Get information about a specific model
+    pub async fn get_model(&self, model_name: &str) -> Result<ModelInfo, GoogleGenerativeAIError> {
+        let url = format!(
+            "{}/{}/models/{}",
+            DEFAULT_BASE_URL, DEFAULT_API_VERSION, model_name
+        );
+        let url = format!("{}?key={}", url, self.api_key);
+
+        let response = self.client.get(&url).send().await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(GoogleGenerativeAIError::new(format!(
+                "Failed to get model {}: {} - {}",
+                model_name, status, error_body
+            )));
+        }
+
+        Ok(response.json().await?)
     }
 }

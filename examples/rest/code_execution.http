@@ -1,0 +1,22 @@
+@baseUrl = https://generativelanguage.googleapis.com/v1beta
+@apiKey = {{GOOGLE_API_KEY}}
+@model = gemini-1.5-flash
+
+### Code execution example - Calculate prime numbers
+POST {{baseUrl}}/models/{{model}}:generateContent?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "tools": [
+        {
+            "code_execution": {}
+        }
+    ],
+    "contents": {
+        "parts": [
+            {
+                "text": "What is the sum of the first 50 prime numbers? Generate and run code for the calculation, and make sure you get all 50."
+            }
+        ]
+    }
+}

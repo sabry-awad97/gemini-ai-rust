@@ -1,8 +1,8 @@
 //! Response models for the Gemini AI API.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use super::{Content, FunctionCall, HarmCategory, Part};
+use super::{Content, FunctionCall, HarmCategory, ModelInfo, Part};
 
 /// A response from the Gemini AI API.
 #[derive(Debug, Clone, Deserialize)]
@@ -54,6 +54,42 @@ impl Response {
             })
             .collect()
     }
+
+    /// Gets all executable code parts from the response.
+    pub fn executable_code(&self) -> Vec<ExecutableCode> {
+        self.candidates
+            .iter()
+            .flat_map(|candidate| {
+                candidate
+                    .content
+                    .parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        Part::ExecutableCode { executable_code } => Some(executable_code.clone()),
+                        _ => None,
+                    })
+            })
+            .collect()
+    }
+
+    /// Gets all code execution results from the response.
+    pub fn code_execution_results(&self) -> Vec<CodeExecutionResult> {
+        self.candidates
+            .iter()
+            .flat_map(|candidate| {
+                candidate
+                    .content
+                    .parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        Part::CodeExecutionResult {
+                            code_execution_result,
+                        } => Some(code_execution_result.clone()),
+                        _ => None,
+                    })
+            })
+            .collect()
+    }
 }
 
 /// A candidate response from the model.
@@ -66,6 +102,11 @@ pub struct Candidate {
     pub finish_reason: Option<FinishReason>,
     /// Safety ratings for different harm categories.
     pub safety_ratings: Option<Vec<SafetyRating>>,
+
+    /// Citation information for this candidate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub citation_metadata: Option<CitationMetadata>,
+
     /// Average log probabilities for the generation.
     pub avg_logprobs: Option<f64>,
 }
@@ -78,6 +119,32 @@ pub struct SafetyRating {
     pub category: HarmCategory,
     /// The probability level of harmful content.
     pub probability: SafetyProbability,
+}
+
+/// Citation metadata for a candidate.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CitationMetadata {
+    /// The citations for this candidate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub citations: Option<Vec<Citation>>,
+}
+
+/// A citation for a candidate.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Citation {
+    /// The start index of the citation.
+    pub start_index: i32,
+
+    /// The end index of the citation.
+    pub end_index: i32,
+
+    /// The URI of the citation.
+    pub uri: String,
+
+    /// The license of the citation.
+    pub license: String,
 }
 
 /// Probability level for safety ratings.
@@ -141,4 +208,49 @@ pub struct UsageMetadata {
 pub struct TokenCountResponse {
     /// Total number of tokens in the request.
     pub total_tokens: i32,
+}
+
+/// Response from listing available models.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListModelsResponse {
+    /// List of available models and their details.
+    pub models: Vec<ModelInfo>,
+    /// Token for retrieving the next page of results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_page_token: Option<String>,
+}
+
+/// Represents executable code in a specific programming language.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutableCode {
+    /// The programming language of the code.
+    pub language: String,
+    /// The actual code to be executed.
+    pub code: String,
+}
+
+/// Result of code execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeExecutionResult {
+    /// The outcome of the code execution.
+    pub outcome: CodeExecutionOutcome,
+    /// The output produced by the code execution.
+    pub output: String,
+}
+
+/// Possible outcomes of code execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CodeExecutionOutcome {
+    /// Code executed successfully.
+    #[serde(rename = "OUTCOME_OK")]
+    Ok,
+    /// Code execution failed.
+    #[serde(rename = "OUTCOME_ERROR")]
+    Error,
+    /// Code execution was blocked.
+    #[serde(rename = "OUTCOME_BLOCKED")]
+    Blocked,
 }

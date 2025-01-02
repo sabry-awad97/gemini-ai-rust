@@ -103,3 +103,10 @@ pub struct FunctionCallingConfig {
     #[builder(default, setter(strip_option))]
     pub allowed_function_names: Option<Vec<String>>,
 }
+
+/// A list of function declarations to be used in a chat session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionDeclarationTool {
+    /// The list of function declarations
+    pub function_declarations: Vec<FunctionDeclaration>,
+}

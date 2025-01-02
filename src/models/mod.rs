@@ -1,6 +1,8 @@
 //! Data structures for the Gemini AI API requests and responses.
 
+mod code_execution;
 mod function;
+mod info;
 mod model_params;
 mod part;
 mod request;
@@ -11,16 +13,19 @@ mod schema;
 mod stream;
 mod tool;
 
+pub use code_execution::CodeExecutionTool;
 pub use function::{
     FunctionCall, FunctionCallingConfig, FunctionCallingMode, FunctionDeclaration,
     FunctionDeclarationSchema, FunctionResponse,
 };
+pub use info::ModelInfo;
 pub use model_params::{GenerationConfig, ModelParams};
 pub use part::Part;
 pub use request::{Content, Request, Role};
 pub use request_type::RequestType;
 pub use response::{
-    Candidate, Response, SafetyProbability, SafetyRating, TokenCountResponse, UsageMetadata,
+    Candidate, ListModelsResponse, Response, SafetyProbability, SafetyRating, TokenCountResponse,
+    UsageMetadata,
 };
 pub use safety::{HarmCategory, SafetySetting, SafetyThreshold};
 pub use schema::{Schema, SchemaType};
