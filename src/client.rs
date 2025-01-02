@@ -80,7 +80,13 @@ impl GenerativeModel {
             .generation_config
             .or_else(|| self.params.generation_config.clone());
 
-        let response = self.client.post(url).json(&request).send().await?;
+        let response = self
+            .client
+            .post(url)
+            .header("x-goog-api-key", &self.api_key)
+            .json(&request)
+            .send()
+            .await?;
 
         let status = response.status();
         if !status.is_success() {

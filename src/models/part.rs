@@ -4,6 +4,8 @@ use base64::{engine::general_purpose::STANDARD as base64_engine, Engine};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use super::function::{FunctionCall, FunctionResponse};
+
 /// A part containing text content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -28,11 +30,13 @@ pub enum Part {
     /// A part containing a function call
     FunctionCall {
         /// The function call content of the part
+        #[serde(rename = "functionCall")]
         function_call: FunctionCall,
     },
     /// A part containing a function response
     FunctionResponse {
         /// The function response content of the part
+        #[serde(rename = "functionResponse")]
         function_response: FunctionResponse,
     },
 }
@@ -65,6 +69,16 @@ impl Part {
             },
         }
     }
+
+    /// Creates a new function call part.
+    pub fn function_call(function_call: FunctionCall) -> Self {
+        Self::FunctionCall { function_call }
+    }
+
+    /// Creates a new function response part.
+    pub fn function_response(function_response: FunctionResponse) -> Self {
+        Self::FunctionResponse { function_response }
+    }
 }
 
 /// Inline data (base64 encoded)
@@ -83,22 +97,4 @@ pub struct FileData {
     pub mime_type: String,
     /// The URI of the file
     pub file_uri: String,
-}
-
-/// Function call
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FunctionCall {
-    /// The name of the function
-    pub name: String,
-    /// The arguments of the function
-    pub args: serde_json::Value,
-}
-
-/// Function response
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FunctionResponse {
-    /// The name of the function
-    pub name: String,
-    /// The response of the function
-    pub response: serde_json::Value,
 }

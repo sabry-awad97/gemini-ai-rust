@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use super::{Content, HarmCategory, Part};
+use super::{Content, FunctionCall, HarmCategory, Part};
 
 /// A response from the Gemini AI API.
 #[derive(Debug, Clone, Deserialize)]
@@ -33,6 +33,26 @@ impl Response {
             })
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    /// Returns a vector of function calls from all candidates in the response.
+    ///
+    /// This method collects all function calls from the response candidates and returns them
+    /// as a vector. If there are no function calls in the response, an empty vector is returned.
+    pub fn function_calls(&self) -> Vec<FunctionCall> {
+        self.candidates
+            .iter()
+            .flat_map(|candidate| {
+                candidate
+                    .content
+                    .parts
+                    .iter()
+                    .filter_map(|part| match part {
+                        Part::FunctionCall { function_call } => Some(function_call.clone()),
+                        _ => None,
+                    })
+            })
+            .collect()
     }
 }
 
@@ -117,8 +137,8 @@ pub struct UsageMetadata {
 
 /// Response from token counting.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TokenCountResponse {
     /// Total number of tokens in the request.
-    #[serde(rename = "totalTokens")]
     pub total_tokens: i32,
 }
