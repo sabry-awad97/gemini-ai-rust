@@ -11,7 +11,10 @@ mod schema;
 mod stream;
 mod tool;
 
-pub use function::{FunctionCall, FunctionDeclaration, FunctionDeclarationSchema, FunctionResponse};
+pub use function::{
+    FunctionCall, FunctionCallingConfig, FunctionCallingMode, FunctionDeclaration,
+    FunctionDeclarationSchema, FunctionResponse,
+};
 pub use model_params::{GenerationConfig, ModelParams};
 pub use part::Part;
 pub use request::{Content, Request, Role};
@@ -22,7 +25,7 @@ pub use response::{
 pub use safety::{HarmCategory, SafetySetting, SafetyThreshold};
 pub use schema::{Schema, SchemaType};
 pub use stream::ResponseStream;
-pub use tool::Tool;
+pub use tool::{Tool, ToolConfig};
 
 /// Alias for the Schema type
 pub type ResponseSchema = schema::Schema;

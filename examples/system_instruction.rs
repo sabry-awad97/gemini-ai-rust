@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .contents(vec![Content {
             role: Some(Role::User),
             parts: vec![Part::Text {
-                text: "Hello there".into(),
+                text: "Who are you?".into(),
             }],
         }])
         .build();

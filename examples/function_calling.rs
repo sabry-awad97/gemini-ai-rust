@@ -1,8 +1,9 @@
 use dotenv::dotenv;
 use gemini_ai_rust::{
     models::{
-        Content, FunctionDeclaration, FunctionDeclarationSchema, FunctionResponse, Part, Request,
-        Role, Schema, SchemaType,
+        Content, FunctionCallingConfig, FunctionCallingMode, FunctionDeclaration,
+        FunctionDeclarationSchema, FunctionResponse, Part, Request, Role, Schema, SchemaType,
+        ToolConfig,
     },
     GenerativeModel,
 };
@@ -298,6 +299,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("{}", final_response.text());
         }
     }
+
+    println!("\n=== Function Calling with Function Calling config ===\n");
+
+    // Create request with system instruction and functions
+    let request = Request::builder()
+        .system_instruction(Content {
+            role: Some(Role::System),
+            parts: vec![Part::Text {
+                text: "You are a helpful lighting system bot. You can turn lights on and off, and you can set the color. Do not perform any other tasks.".into(),
+            }],
+        },)
+        .contents(vec![
+            Content {
+                role: Some(Role::User),
+                parts: vec![Part::Text {
+                    text: "What can you do?".into(),
+                }],
+            },
+        ])
+        .tools(vec![functions.clone().into()])
+        .tool_config(ToolConfig::builder()
+            .function_calling_config(FunctionCallingConfig::builder()
+                .mode(FunctionCallingMode::None)
+                .build()
+            )
+            .build()
+        )
+        .build();
+
+    let response = model.generate_response(request).await?;
+
+    println!("Response: {}", response.text());
 
     Ok(())
 }

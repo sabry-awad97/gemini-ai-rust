@@ -76,3 +76,30 @@ pub struct FunctionResponse<T = serde_json::Value> {
     /// The response from the function.
     pub response: T,
 }
+
+/// Specifies how the model should handle function calling behavior.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum FunctionCallingMode {
+    /// The model decides to predict either a function call or a natural language response.
+    Auto,
+    /// The model is constrained to always predict a function call.
+    /// If allowed_function_names is not provided, the model picks from all available function declarations.
+    /// If allowed_function_names is provided, the model picks from the set of allowed functions.
+    Any,
+    /// The model won't predict a function call.
+    /// In this case, the model behavior is the same as if you don't pass any function declarations.
+    None,
+}
+
+/// Configuration for how the model should handle function calling.
+#[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionCallingConfig {
+    /// The mode of function calling to use
+    pub mode: FunctionCallingMode,
+    /// Optional list of allowed function names. Only used when mode is Any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub allowed_function_names: Option<Vec<String>>,
+}

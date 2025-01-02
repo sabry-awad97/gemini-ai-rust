@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use typed_builder::TypedBuilder;
 
-use super::function::FunctionDeclaration;
+use super::function::{FunctionCallingConfig, FunctionDeclaration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -35,4 +36,13 @@ impl From<Vec<FunctionDeclaration>> for Tool {
             function_declarations,
         }
     }
+}
+
+/// Configuration for tool behavior in the model.
+#[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolConfig {
+    /// Configuration for function calling behavior.
+    #[builder(setter(into))]
+    pub function_calling_config: FunctionCallingConfig,
 }
