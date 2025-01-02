@@ -19,6 +19,10 @@ pub enum SchemaType {
     Object,
 }
 
+/// A schema for a function parameter.
+///
+/// This struct represents the JSON Schema format used to define parameters for function declarations.
+/// It supports various types, formats, descriptions, and nested schemas for complex types.
 #[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
 #[builder(doc)]
 pub struct Schema {
@@ -57,10 +61,10 @@ pub struct Schema {
     #[builder(default, setter(strip_option, into))]
     pub properties: Option<std::collections::HashMap<String, Schema>>, // Use HashMap for property map
 
-    /// Optional. Array of required property.
+    /// Optional. The required properties.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option, into))]
-    pub required: Option<Vec<String>>, // Required properties
+    pub required: Option<Vec<String>>,
 
     /// Optional. The example of the property.
     #[serde(skip_serializing_if = "Option::is_none")]

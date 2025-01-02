@@ -1,6 +1,9 @@
 use dotenv::dotenv;
 use gemini_ai_rust::{
-    models::{Content, FunctionDeclaration, FunctionResponse, Part, Request, Role},
+    models::{
+        Content, FunctionDeclaration, FunctionDeclarationSchema, FunctionResponse, Part, Request,
+        Role, Schema, SchemaType,
+    },
     GenerativeModel,
 };
 use serde::{Deserialize, Serialize};
@@ -25,21 +28,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let get_weather = FunctionDeclaration::builder()
         .name("get_weather")
         .description("Get the simulated weather data for a location (for demo purposes)")
-        .parameters(json!({
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "The city name"
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": ["celsius", "fahrenheit"],
-                    "description": "The temperature unit to use"
-                }
-            },
-            "required": ["location", "unit"]
-        }))
+        .parameters(
+            FunctionDeclarationSchema::builder()
+                .r#type(SchemaType::Object)
+                .properties([
+                    (
+                        "location".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .description("The city name")
+                            .build(),
+                    ),
+                    (
+                        "unit".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .r#enum(vec!["celsius".to_string(), "fahrenheit".to_string()])
+                            .description("The temperature unit to use")
+                            .build(),
+                    ),
+                ])
+                .required(vec!["location".to_string(), "unit".to_string()])
+                .build(),
+        )
         .build();
 
     println!("=== Function Calling Example ===\n");
@@ -50,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .contents(vec![Content {
             role: Some(Role::User),
             parts: vec![Part::Text {
-                text: "Let's test the function calling with simulated weather data. What's the current temperature in London?".into(),
+                text: "Let's test the function calling with simulated weather data. What's the current temperature in London using celsius unit?".into(),
             }],
         }])
         .tools(vec![vec![get_weather].into()])
@@ -122,47 +133,59 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Define the available functions
     let functions = vec![
-            FunctionDeclaration::builder()
-                .name("enable_lights")
-                .description("Turn on the lighting system.")
-                .parameters(json!({
-                    "type": "object",
-                    "properties": {
-                        "confirm": {
-                            "type": "boolean",
-                            "description": "Confirm turning on the lights"
-                        }
-                    }
-                }))
-                .build(),
-            FunctionDeclaration::builder()
-                .name("set_light_color")
-                .description("Set the light color. Lights must be enabled for this to work.")
-                .parameters(json!({
-                    "type": "object",
-                    "properties": {
-                        "rgb_hex": {
-                            "type": "string",
-                            "description": "The light color as a 6-digit hex string, e.g. ff0000 for red."
-                        }
-                    },
-                    "required": ["rgb_hex"]
-                }))
-                .build(),
-            FunctionDeclaration::builder()
-                .name("stop_lights")
-                .description("Turn off the lighting system.")
-                .parameters(json!({
-                    "type": "object",
-                    "properties": {
-                        "confirm": {
-                            "type": "boolean",
-                            "description": "Confirm turning off the lights"
-                        }
-                    }
-                }))
-                .build(),
-        ];
+        FunctionDeclaration::builder()
+            .name("enable_lights")
+            .description("Turn on the lighting system.")
+            .parameters(
+                FunctionDeclarationSchema::builder()
+                    .r#type(SchemaType::Object)
+                    .properties([(
+                        "confirm".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::Boolean)
+                            .description("Confirm turning on the lights".to_string())
+                            .build(),
+                    )])
+                    .build(),
+            )
+            .build(),
+        FunctionDeclaration::builder()
+            .name("set_light_color")
+            .description("Set the light color. Lights must be enabled for this to work.")
+            .parameters(
+                FunctionDeclarationSchema::builder()
+                    .r#type(SchemaType::Object)
+                    .properties([(
+                        "rgb_hex".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .description(
+                                "The light color as a 6-digit hex string, e.g. ff0000 for red."
+                                    .to_string(),
+                            )
+                            .build(),
+                    )])
+                    .required(vec!["rgb_hex".to_string()])
+                    .build(),
+            )
+            .build(),
+        FunctionDeclaration::builder()
+            .name("stop_lights")
+            .description("Turn off the lighting system.")
+            .parameters(
+                FunctionDeclarationSchema::builder()
+                    .r#type(SchemaType::Object)
+                    .properties([(
+                        "confirm".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::Boolean)
+                            .description("Confirm turning off the lights".to_string())
+                            .build(),
+                    )])
+                    .build(),
+            )
+            .build(),
+    ];
 
     // Test different prompts
     let prompts = vec![

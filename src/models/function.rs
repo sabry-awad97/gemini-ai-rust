@@ -3,6 +3,30 @@
 use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 
+use super::schema::{Schema, SchemaType};
+
+/// A function declaration schema that can be passed to the model.
+#[derive(Debug, Clone, Serialize, Deserialize, TypedBuilder)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionDeclarationSchema {
+    /// The type of the parameter.
+    pub r#type: SchemaType,
+
+    /// The properties of the parameter.
+    #[builder(setter(into))]
+    pub properties: std::collections::HashMap<String, Schema>,
+
+    /// Optional. Description of the parameter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option, into))]
+    pub description: Option<String>,
+
+    /// Optional. Array of required parameters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option))]
+    pub required: Option<Vec<String>>,
+}
+
 /// A function declaration that can be passed to the model.
 ///
 /// The model may decide to call a subset of these functions by populating
@@ -26,7 +50,7 @@ pub struct FunctionDeclaration {
     /// The parameters of the function in JSON Schema format.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option))]
-    pub parameters: Option<serde_json::Value>,
+    pub parameters: Option<FunctionDeclarationSchema>,
 }
 
 /// A function call made by the model.

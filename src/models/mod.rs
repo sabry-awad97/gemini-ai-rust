@@ -11,7 +11,7 @@ mod schema;
 mod stream;
 mod tool;
 
-pub use function::{FunctionCall, FunctionDeclaration, FunctionResponse};
+pub use function::{FunctionCall, FunctionDeclaration, FunctionDeclarationSchema, FunctionResponse};
 pub use model_params::{GenerationConfig, ModelParams};
 pub use part::Part;
 pub use request::{Content, Request, Role};
@@ -20,7 +20,7 @@ pub use response::{
     Candidate, Response, SafetyProbability, SafetyRating, TokenCountResponse, UsageMetadata,
 };
 pub use safety::{HarmCategory, SafetySetting, SafetyThreshold};
-pub use schema::SchemaType;
+pub use schema::{Schema, SchemaType};
 pub use stream::ResponseStream;
 pub use tool::Tool;
 
