@@ -79,12 +79,16 @@ impl ChatSession {
         let response = self.model.generate_response(request).await?;
 
         // Extract the response text
-        if let Some(candidate) = response.candidates.first() {
-            if let Some(Part::Text { text }) = candidate.content.parts.first() {
-                // Update history
-                self.history.push(user_message);
-                self.history.push(candidate.content.clone());
-                return Ok(text.clone());
+        if let Some(candidates) = response.candidates.as_ref() {
+            if let Some(candidate) = candidates.first() {
+                if let Some(content) = candidate.content.as_ref() {
+                    if let Some(Part::Text { text }) = content.parts.first() {
+                        // Update history
+                        self.history.push(user_message);
+                        self.history.push(content.clone());
+                        return Ok(text.clone());
+                    }
+                }
             }
         }
 

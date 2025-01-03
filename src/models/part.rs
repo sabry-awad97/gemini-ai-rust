@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use super::{
+    code_execution::{CodeExecutionResult, ExecutableCode},
     function::{FunctionCall, FunctionResponse},
-    response::{CodeExecutionResult, ExecutableCode},
 };
 
 /// A part containing text content.

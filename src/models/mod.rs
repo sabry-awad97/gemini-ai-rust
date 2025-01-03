@@ -3,6 +3,7 @@
 mod code_execution;
 mod function;
 mod google_search;
+mod grounding_metadata;
 mod info;
 mod model_params;
 mod part;
@@ -14,9 +15,8 @@ mod schema;
 mod stream;
 mod system_instruction;
 mod tool;
-mod grounding_metadata;
 
-pub use code_execution::CodeExecutionTool;
+pub use code_execution::{CodeExecutionConfig, CodeExecutionResult, CodeExecutionOutcome, CodeExecutionTool};
 pub use function::{
     FunctionCall, FunctionCallingConfig, FunctionCallingMode, FunctionDeclaration,
     FunctionDeclarationSchema, FunctionResponse,

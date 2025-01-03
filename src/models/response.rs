@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    grounding_metadata::GroundingMetadata, Content, FunctionCall, HarmCategory, ModelInfo, Part,
+    code_execution::{CodeExecutionResult, ExecutableCode},
+    grounding_metadata::GroundingMetadata,
+    Content, FunctionCall, HarmCategory, ModelInfo, Part,
 };
 
 /// A response from the Gemini AI API.
@@ -11,30 +13,26 @@ use super::{
 #[serde(rename_all = "camelCase")]
 pub struct Response {
     /// The generated candidates from the model.
-    pub candidates: Vec<Candidate>,
+    pub candidates: Option<Vec<Candidate>>,
     /// Metadata about token usage.
-    pub usage_metadata: UsageMetadata,
+    pub usage_metadata: Option<UsageMetadata>,
     /// The version of the model used.
-    pub model_version: String,
+    pub model_version: Option<String>,
 }
 
 impl Response {
     /// Gets the text content from the first candidate's first part.
     pub fn text(&self) -> String {
         self.candidates
-            .iter()
-            .flat_map(|candidate| {
-                candidate
-                    .content
-                    .parts
-                    .iter()
-                    .filter_map(|part| match part {
-                        Part::Text { text } => Some(text.clone()),
-                        _ => None,
-                    })
+            .as_ref()
+            .and_then(|candidates| candidates.first())
+            .and_then(|candidate| candidate.content.as_ref())
+            .and_then(|content| content.parts.first())
+            .and_then(|part| match part {
+                Part::Text { text } => Some(text.clone()),
+                _ => None,
             })
-            .collect::<Vec<_>>()
-            .join(" ")
+            .unwrap_or_default()
     }
 
     /// Returns a vector of function calls from all candidates in the response.
@@ -43,54 +41,62 @@ impl Response {
     /// as a vector. If there are no function calls in the response, an empty vector is returned.
     pub fn function_calls(&self) -> Vec<FunctionCall> {
         self.candidates
-            .iter()
-            .flat_map(|candidate| {
-                candidate
-                    .content
-                    .parts
+            .as_ref()
+            .map(|candidates| {
+                candidates
                     .iter()
-                    .filter_map(|part| match part {
-                        Part::FunctionCall { function_call } => Some(function_call.clone()),
-                        _ => None,
+                    .filter_map(|candidate| candidate.content.as_ref())
+                    .flat_map(|content| {
+                        content.parts.iter().filter_map(|part| match part {
+                            Part::FunctionCall { function_call } => Some(function_call.clone()),
+                            _ => None,
+                        })
                     })
+                    .collect()
             })
-            .collect()
+            .unwrap_or_default()
     }
 
     /// Gets all executable code parts from the response.
     pub fn executable_code(&self) -> Vec<ExecutableCode> {
         self.candidates
-            .iter()
-            .flat_map(|candidate| {
-                candidate
-                    .content
-                    .parts
+            .as_ref()
+            .map(|candidates| {
+                candidates
                     .iter()
-                    .filter_map(|part| match part {
-                        Part::ExecutableCode { executable_code } => Some(executable_code.clone()),
-                        _ => None,
+                    .filter_map(|candidate| candidate.content.as_ref())
+                    .flat_map(|content| {
+                        content.parts.iter().filter_map(|part| match part {
+                            Part::ExecutableCode { executable_code } => {
+                                Some(executable_code.clone())
+                            }
+                            _ => None,
+                        })
                     })
+                    .collect()
             })
-            .collect()
+            .unwrap_or_default()
     }
 
     /// Gets all code execution results from the response.
     pub fn code_execution_results(&self) -> Vec<CodeExecutionResult> {
         self.candidates
-            .iter()
-            .flat_map(|candidate| {
-                candidate
-                    .content
-                    .parts
+            .as_ref()
+            .map(|candidates| {
+                candidates
                     .iter()
-                    .filter_map(|part| match part {
-                        Part::CodeExecutionResult {
-                            code_execution_result,
-                        } => Some(code_execution_result.clone()),
-                        _ => None,
+                    .filter_map(|candidate| candidate.content.as_ref())
+                    .flat_map(|content| {
+                        content.parts.iter().filter_map(|part| match part {
+                            Part::CodeExecutionResult {
+                                code_execution_result,
+                            } => Some(code_execution_result.clone()),
+                            _ => None,
+                        })
                     })
+                    .collect()
             })
-            .collect()
+            .unwrap_or_default()
     }
 }
 
@@ -99,7 +105,7 @@ impl Response {
 #[serde(rename_all = "camelCase")]
 pub struct Candidate {
     /// The content of the candidate response.
-    pub content: Content,
+    pub content: Option<Content>,
     /// The reason why the generation finished.
     pub finish_reason: Option<FinishReason>,
     /// A message indicating why the generation finished.
@@ -251,39 +257,4 @@ pub struct ListModelsResponse {
     /// Token for retrieving the next page of results.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_page_token: Option<String>,
-}
-
-/// Represents executable code in a specific programming language.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecutableCode {
-    /// The programming language of the code.
-    pub language: String,
-    /// The actual code to be executed.
-    pub code: String,
-}
-
-/// Result of code execution.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeExecutionResult {
-    /// The outcome of the code execution.
-    pub outcome: CodeExecutionOutcome,
-    /// The output produced by the code execution.
-    pub output: String,
-}
-
-/// Possible outcomes of code execution.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum CodeExecutionOutcome {
-    /// Code executed successfully.
-    #[serde(rename = "OUTCOME_OK")]
-    Ok,
-    /// Code execution failed.
-    #[serde(rename = "OUTCOME_ERROR")]
-    Error,
-    /// Code execution was blocked.
-    #[serde(rename = "OUTCOME_BLOCKED")]
-    Blocked,
 }
