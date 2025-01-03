@@ -13,7 +13,7 @@ use serde_json::json;
 use std::{error::Error, time::Duration};
 use tokio::time::sleep;
 
-const RETRY_ATTEMPTS: u32 = 3;
+const RETRY_ATTEMPTS: u32 = 5;
 const INITIAL_RETRY_DELAY_MS: u64 = 1000;
 const MAX_RETRY_DELAY_MS: u64 = 5000;
 
