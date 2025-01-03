@@ -16,7 +16,9 @@ mod stream;
 mod system_instruction;
 mod tool;
 
-pub use code_execution::{CodeExecutionConfig, CodeExecutionResult, CodeExecutionOutcome, CodeExecutionTool};
+pub use code_execution::{
+    CodeExecutionConfig, CodeExecutionOutcome, CodeExecutionResult, CodeExecutionTool,
+};
 pub use function::{
     FunctionCall, FunctionCallingConfig, FunctionCallingMode, FunctionDeclaration,
     FunctionDeclarationSchema, FunctionResponse,
@@ -24,7 +26,7 @@ pub use function::{
 pub use google_search::GoogleSearch;
 pub use info::ModelInfo;
 pub use model_params::{GenerationConfig, ModelParams};
-pub use part::Part;
+pub use part::{FileData, InlineData, Part};
 pub use request::{Content, Request, Role};
 pub use request_type::RequestType;
 pub use response::{
