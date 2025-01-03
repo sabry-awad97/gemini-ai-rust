@@ -1,100 +1,177 @@
+use colored::*;
 use dotenv::dotenv;
 use gemini_ai_rust::{
-    cache::CacheManager,
-    models::{Content, Part, Request, Role},
+    models::{Content, Part, Request},
     GenerativeModel,
 };
-use std::path::PathBuf;
-use tokio_stream::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::{
+    collections::HashMap,
+    error::Error,
+    time::{Duration, Instant},
+};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load environment variables from .env file
-    dotenv().ok();
+/// A simple in-memory cache for demonstration
+#[derive(Default)]
+struct ResponseCache {
+    cache: HashMap<String, String>,
+}
 
-    // Get API key from environment
-    let api_key =
-        std::env::var("GOOGLE_API_KEY").expect("GOOGLE_API_KEY environment variable must be set");
-
-    // Create managers
-    let cache_manager = CacheManager::new(&api_key);
-    let model = GenerativeModel::from_env("gemini-1.5-flash")?;
-
-    // Example file path (you should create this file with some text content)
-    let example_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples")
-        .join("large_text.txt");
-
-    // Print instructions if the file doesn't exist
-    if !example_file.exists() {
-        eprintln!(
-            "Please create a file at {:?} with at least 32,768 tokens (about 100 pages) of text content.",
-            example_file
-        );
-        return Ok(());
+impl ResponseCache {
+    fn new() -> Self {
+        Self::default()
     }
 
-    println!("Creating cache from file: {:?}", example_file);
+    fn get(&self, key: &str) -> Option<&String> {
+        self.cache.get(key)
+    }
 
-    // Create cache with system instruction
-    let system_instruction = Some(Content {
-        parts: vec![Part::text("You are an expert at analyzing transcripts.")],
-        role: Some(Role::System),
-    });
+    fn set(&mut self, key: String, value: String) {
+        self.cache.insert(key, value);
+    }
 
-    let cache_info = cache_manager
-        .create_cache_from_file(
-            "models/gemini-1.5-flash-001",
-            &example_file,
-            system_instruction,
-            "300s",
-        )
-        .await?;
+    fn stats(&self) -> (usize, usize) {
+        let total_size = self.cache.values().map(|v| v.len()).sum();
+        (self.cache.len(), total_size)
+    }
+}
 
-    println!("Cache created: {}", cache_info.name);
+/// Demonstrate caching with different queries
+async fn demonstrate_caching(model: &GenerativeModel) -> Result<(), Box<dyn Error>> {
+    let mut cache = ResponseCache::new();
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈")
+            .template("{spinner:.green} {msg}")?,
+    );
+    pb.enable_steady_tick(Duration::from_millis(100));
 
-    // Generate content using the cached content
-    println!("\nGenerating content using cache...");
-    let request = Request::builder()
-        .contents(vec![Content {
-            role: Some(Role::User),
-            parts: vec![Part::text("Please summarize this transcript")],
-        }])
-        .cached_content(cache_info.name.clone())
-        .build();
+    let test_queries = [
+        ("Basic Math", "What is 2 + 2?", "Simple arithmetic question"),
+        (
+            "Science",
+            "What is photosynthesis?",
+            "Basic science concept",
+        ),
+        (
+            "Duplicate Math",
+            "What is 2 + 2?",
+            "Repeated query to demonstrate caching",
+        ),
+        (
+            "History",
+            "Who was Albert Einstein?",
+            "Historical figure query",
+        ),
+        (
+            "Duplicate Science",
+            "What is photosynthesis?",
+            "Another repeated query",
+        ),
+    ];
 
-    let mut stream = model.stream_generate_response(request).await?;
-    while let Some(response) = stream.next().await {
-        match response {
-            Ok(response) => print!("{}", response.text()),
-            Err(e) => eprintln!("Error: {}", e),
+    for (query_name, query_text, description) in test_queries {
+        println!("\n{}", "━".repeat(100).bright_black());
+        println!("{} {}", "🔍 Query:".blue().bold(), query_name.bright_blue());
+        println!(
+            "{} {}",
+            "📋 Description:".cyan().bold(),
+            description.bright_cyan()
+        );
+        println!("{}", "─".repeat(100).bright_black());
+
+        println!(
+            "{} {}",
+            "❓ Question:".yellow().bold(),
+            query_text.bright_yellow()
+        );
+
+        // Check cache first
+        let start_time = Instant::now();
+        if let Some(cached_response) = cache.get(query_text) {
+            let elapsed = start_time.elapsed();
+            println!(
+                "\n{} {}",
+                "📦 Cache Hit!".green().bold(),
+                format!("Retrieved in {:.2?}", elapsed).bright_green()
+            );
+            println!("{}", cached_response.white());
+        } else {
+            pb.set_message("Generating response...");
+            let request = Request::builder()
+                .contents(vec![Content {
+                    role: None,
+                    parts: vec![Part::Text {
+                        text: query_text.into(),
+                    }],
+                }])
+                .build();
+
+            match model.generate_response(request).await {
+                Ok(response) => {
+                    let elapsed = start_time.elapsed();
+                    pb.finish_and_clear();
+                    println!(
+                        "\n{} {}",
+                        "🌟 New Response:".magenta().bold(),
+                        format!("Generated in {:.2?}", elapsed).bright_magenta()
+                    );
+                    let response_text = response.text();
+                    println!("{}", response_text.white());
+
+                    // Cache the response
+                    cache.set(query_text.to_string(), response_text);
+
+                    // Display cache stats
+                    let (entries, size) = cache.stats();
+                    println!(
+                        "\n{} {} entries, {} bytes",
+                        "📊 Cache Stats:".bright_white().bold(),
+                        entries,
+                        size
+                    );
+                }
+                Err(e) => {
+                    pb.finish_and_clear();
+                    println!(
+                        "{} {}",
+                        "❌ Error:".red().bold(),
+                        format!("Failed to generate response: {}", e).red()
+                    );
+                }
+            }
         }
     }
-    println!();
 
-    // List all caches
-    println!("\nListing all caches:");
-    let caches = cache_manager.list_caches().await?;
-    for cache in &caches {
-        println!("- {} (expires: {:?})", cache.name, cache.expire_time);
-    }
+    Ok(())
+}
 
-    // Get specific cache
-    println!("\nGetting cache info:");
-    let cache = cache_manager.get_cache(&cache_info.name).await?;
-    println!("Cache TTL: {}", cache.ttl);
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    println!("{}", "📦 Gemini Response Cache Demo".bright_green().bold());
+    println!("{}", "=========================".bright_green());
+    println!(
+        "{}",
+        "Demonstrating response caching with performance metrics"
+            .bright_black()
+            .italic()
+    );
 
-    // Update cache TTL
-    println!("\nUpdating cache TTL to 600s...");
-    let updated_cache = cache_manager
-        .update_cache_ttl(&cache_info.name, "600s")
-        .await?;
-    println!("New TTL: {}", updated_cache.ttl);
+    // Load environment variables
+    dotenv().ok();
+    println!("{}", "✓ Environment loaded".green());
 
-    // Delete cache
-    println!("\nDeleting cache...");
-    cache_manager.delete_cache(&cache_info.name).await?;
-    println!("Cache deleted successfully!");
+    // Initialize the model
+    let model = GenerativeModel::from_env("gemini-1.5-flash")?;
+    println!("{}", "✓ Gemini model initialized".green());
 
+    // Run caching demonstrations
+    demonstrate_caching(&model).await?;
+
+    println!(
+        "\n{}",
+        "✨ Cache demonstration completed!".bright_green().bold()
+    );
     Ok(())
 }
