@@ -52,9 +52,9 @@ pub struct Schema {
     pub items: Option<Box<Schema>>, // Use Box for recursive struct
 
     /// Optional. The enum of the property.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", rename = "enum")]
     #[builder(default, setter(strip_option, into))]
-    pub r#enum: Option<Vec<String>>, // 'enum' is a reserved keyword in Rust
+    pub enum_values: Option<Vec<String>>, // 'enum' is a reserved keyword in Rust
 
     /// Optional. Map of Schema.
     #[serde(skip_serializing_if = "Option::is_none")]

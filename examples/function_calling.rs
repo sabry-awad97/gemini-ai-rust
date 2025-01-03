@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         "unit".to_string(),
                         Schema::builder()
                             .r#type(SchemaType::String)
-                            .r#enum(vec!["celsius".to_string(), "fahrenheit".to_string()])
+                            .enum_values(vec!["celsius".to_string(), "fahrenheit".to_string()])
                             .description("The temperature unit to use")
                             .build(),
                     ),
