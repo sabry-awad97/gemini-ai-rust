@@ -1,0 +1,123 @@
+@baseUrl = https://generativelanguage.googleapis.com/v1beta
+@apiKey = {{GOOGLE_API_KEY}}
+@baseModel = gemini-1.5-flash-001-tuning
+
+### Create a tuned model
+# @name createTunedModel
+POST {{baseUrl}}/tunedModels?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "display_name": "number generator model",
+    "base_model": "models/{{baseModel}}",
+    "tuning_task": {
+        "hyperparameters": {
+            "batch_size": 2,
+            "learning_rate": 0.001,
+            "epoch_count": 5
+        },
+        "training_data": {
+            "examples": {
+                "examples": [
+                    {
+                        "text_input": "1",
+                        "output": "2"
+                    },
+                    {
+                        "text_input": "3",
+                        "output": "4"
+                    },
+                    {
+                        "text_input": "-3",
+                        "output": "-2"
+                    },
+                    {
+                        "text_input": "twenty two",
+                        "output": "twenty three"
+                    },
+                    {
+                        "text_input": "two hundred",
+                        "output": "two hundred one"
+                    },
+                    {
+                        "text_input": "ninety nine",
+                        "output": "one hundred"
+                    },
+                    {
+                        "text_input": "8",
+                        "output": "9"
+                    },
+                    {
+                        "text_input": "-98",
+                        "output": "-97"
+                    },
+                    {
+                        "text_input": "1,000",
+                        "output": "1,001"
+                    },
+                    {
+                        "text_input": "10,100,000",
+                        "output": "10,100,001"
+                    },
+                    {
+                        "text_input": "thirteen",
+                        "output": "fourteen"
+                    },
+                    {
+                        "text_input": "eighty",
+                        "output": "eighty one"
+                    },
+                    {
+                        "text_input": "one",
+                        "output": "two"
+                    },
+                    {
+                        "text_input": "three",
+                        "output": "four"
+                    },
+                    {
+                        "text_input": "seven",
+                        "output": "eight"
+                    }
+                ]
+            }
+        }
+    }
+}
+
+### Check tuning operation status
+# @name checkTuningOperation
+GET {{baseUrl}}/{{createTunedModel.response.body.name}}?key={{apiKey}}
+Content-Type: application/json
+
+### Get tuned model status
+# @name getTunedModelStatus
+GET {{baseUrl}}/{{createTunedModel.response.body.metadata.tunedModel}}?key={{apiKey}}
+Content-Type: application/json
+
+### Generate content using tuned model
+# @name generateWithTunedModel
+POST {{baseUrl}}/{{createTunedModel.response.body.metadata.tunedModel}}:generateContent?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "LXIII"
+                }
+            ]
+        }
+    ]
+}
+
+### List tuned models (first page)
+# @name listTunedModels
+GET {{baseUrl}}/tunedModels?page_size=5&key={{apiKey}}
+Content-Type: application/json
+
+### Delete tuned model
+# @name deleteTunedModel
+DELETE {{baseUrl}}/{{createTunedModel.response.body.metadata.tunedModel}}?key={{apiKey}}
+Content-Type: application/json
