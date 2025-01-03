@@ -32,6 +32,12 @@ pub enum FileError {
     /// Error occurred during file upload process.
     #[error("Upload failed: {0}")]
     UploadError(String),
+    /// Error occurred during file deletion.
+    #[error("Deletion failed: {0}")]
+    DeletionError(String),
+    /// Invalid file ID provided.
+    #[error("Invalid file ID: {0}")]
+    InvalidFileId(String),
     /// Error occurred during file processing.
     #[error("File processing error: {0}")]
     ProcessingError(String),
@@ -258,12 +264,26 @@ impl GoogleAIFileManager {
     }
 
     /// Deletes a file from the system.
-    pub async fn delete_file(&self, name: &str) -> Result<(), FileError> {
+    pub async fn delete_file(&self, file_id: &str) -> Result<(), FileError> {
         let url = format!(
             "{}/{}/files/{}?key={}",
-            FILE_API_URL, FILE_API_VERSION, name, self.api_key
+            FILE_API_URL,
+            FILE_API_VERSION,
+            parse_file_id(file_id)?,
+            self.api_key
         );
-        self.client.delete(&url).send().await?;
+        let response = self
+            .client
+            .delete(&url)
+            .header("x-goog-api-key", &self.api_key)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_message = response.text().await?;
+            return Err(FileError::DeletionError(error_message));
+        }
+
         Ok(())
     }
 
@@ -321,6 +341,18 @@ impl GoogleAIFileManager {
             "Timeout waiting for file {} to process",
             name
         )))
+    }
+}
+
+fn parse_file_id(file_id: &str) -> Result<&str, FileError> {
+    if let Some(stripped) = file_id.strip_prefix("files/") {
+        Ok(stripped)
+    } else if !file_id.is_empty() {
+        Ok(file_id)
+    } else {
+        Err(FileError::InvalidFileId(
+            "File ID must not be empty".to_string(),
+        ))
     }
 }
 
