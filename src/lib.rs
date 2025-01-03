@@ -18,6 +18,7 @@
 //! }
 //! ```
 
+pub mod cache;
 pub mod chat;
 pub mod client;
 pub mod error;
@@ -25,3 +26,4 @@ pub mod file;
 pub mod models;
 
 pub use client::GenerativeModel;
+pub use file::GoogleAIFileManager;
