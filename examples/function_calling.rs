@@ -141,6 +141,14 @@ async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box
         )
         .build();
 
+    // let get_weather = FunctionDeclaration::new()
+    //     .with_name("get_weather")
+    //     .with_description("Get the weather data for a location based on search results")
+    //     .with_parameters(&[
+    //         "location, string, The city name",
+    //         "unit, string:enum(celsius,fahrenheit), The temperature unit to use"
+    //     ]);
+
     // Test weather queries
     let weather_queries = [
         "What's the current temperature in London using celsius?",
@@ -267,62 +275,79 @@ async fn demonstrate_calendar_function(model: &GenerativeModel) -> Result<(), Bo
         "Testing calendar event management functions".bright_black()
     );
 
+    // let calendar_functions = vec![
+    //     FunctionDeclaration::builder()
+    //         .name("add_event")
+    //         .description("Add a new event to the calendar")
+    //         .parameters(
+    //             FunctionDeclarationSchema::builder()
+    //                 .r#type(SchemaType::Object)
+    //                 .properties([
+    //                     (
+    //                         "date".to_string(),
+    //                         Schema::builder()
+    //                             .r#type(SchemaType::String)
+    //                             .description("The date in YYYY-MM-DD format")
+    //                             .build(),
+    //                     ),
+    //                     (
+    //                         "event".to_string(),
+    //                         Schema::builder()
+    //                             .r#type(SchemaType::String)
+    //                             .description("The event description")
+    //                             .build(),
+    //                     ),
+    //                     (
+    //                         "duration_minutes".to_string(),
+    //                         Schema::builder()
+    //                             .r#type(SchemaType::Integer)
+    //                             .description("Duration of the event in minutes")
+    //                             .build(),
+    //                     ),
+    //                 ])
+    //                 .required(vec![
+    //                     "date".to_string(),
+    //                     "event".to_string(),
+    //                     "duration_minutes".to_string(),
+    //                 ])
+    //                 .build(),
+    //         )
+    //         .build(),
+    //     FunctionDeclaration::builder()
+    //         .name("view_events")
+    //         .description("View events for a specific date")
+    //         .parameters(
+    //             FunctionDeclarationSchema::builder()
+    //                 .r#type(SchemaType::Object)
+    //                 .properties([(
+    //                     "date".to_string(),
+    //                     Schema::builder()
+    //                         .r#type(SchemaType::String)
+    //                         .description("The date in YYYY-MM-DD format")
+    //                         .build(),
+    //                 )])
+    //                 .required(vec!["date".to_string()])
+    //                 .build(),
+    //         )
+    //         .build(),
+    // ];
+
     // Define calendar functions
     let calendar_functions = vec![
-        FunctionDeclaration::builder()
-            .name("add_event")
-            .description("Add a new event to the calendar")
-            .parameters(
-                FunctionDeclarationSchema::builder()
-                    .r#type(SchemaType::Object)
-                    .properties([
-                        (
-                            "date".to_string(),
-                            Schema::builder()
-                                .r#type(SchemaType::String)
-                                .description("The date in YYYY-MM-DD format")
-                                .build(),
-                        ),
-                        (
-                            "event".to_string(),
-                            Schema::builder()
-                                .r#type(SchemaType::String)
-                                .description("The event description")
-                                .build(),
-                        ),
-                        (
-                            "duration_minutes".to_string(),
-                            Schema::builder()
-                                .r#type(SchemaType::Integer)
-                                .description("Duration of the event in minutes")
-                                .build(),
-                        ),
-                    ])
-                    .required(vec![
-                        "date".to_string(),
-                        "event".to_string(),
-                        "duration_minutes".to_string(),
-                    ])
-                    .build(),
-            )
-            .build(),
-        FunctionDeclaration::builder()
-            .name("view_events")
-            .description("View events for a specific date")
-            .parameters(
-                FunctionDeclarationSchema::builder()
-                    .r#type(SchemaType::Object)
-                    .properties([(
-                        "date".to_string(),
-                        Schema::builder()
-                            .r#type(SchemaType::String)
-                            .description("The date in YYYY-MM-DD format")
-                            .build(),
-                    )])
-                    .required(vec!["date".to_string()])
-                    .build(),
-            )
-            .build(),
+        FunctionDeclaration::new()
+            .with_name("add_event")
+            .with_description("Add a new event to the calendar")
+            .with_parameters(&[
+                "date, string, The date in YYYY-MM-DD format",
+                "event, string, The event description",
+                "duration_minutes, integer, Duration of the event in minutes"
+            ]),
+        FunctionDeclaration::new()
+            .with_name("view_events")
+            .with_description("View events for a specific date")
+            .with_parameters(&[
+                "date, string, The date in YYYY-MM-DD format"
+            ])
     ];
 
     // Test calendar queries
@@ -454,40 +479,49 @@ async fn demonstrate_search_function(model: &GenerativeModel) -> Result<(), Box<
     println!("{}", "=====================".bright_cyan());
     println!("{}", "Testing search and bookmark functions".bright_black());
 
+    // let bookmark_function = FunctionDeclaration::builder()
+    //     .name("bookmark_page")
+    //     .description("Save a webpage as a bookmark")
+    //     .parameters(
+    //         FunctionDeclarationSchema::builder()
+    //             .r#type(SchemaType::Object)
+    //             .properties([
+    //                 (
+    //                     "title".to_string(),
+    //                     Schema::builder()
+    //                         .r#type(SchemaType::String)
+    //                         .description("Title of the webpage")
+    //                         .build(),
+    //                 ),
+    //                 (
+    //                     "url".to_string(),
+    //                     Schema::builder()
+    //                         .r#type(SchemaType::String)
+    //                         .description("URL of the webpage")
+    //                         .build(),
+    //                 ),
+    //                 (
+    //                     "category".to_string(),
+    //                     Schema::builder()
+    //                         .r#type(SchemaType::String)
+    //                         .description("Category for organizing bookmarks")
+    //                         .build(),
+    //                 ),
+    //             ])
+    //             .required(vec!["title".to_string(), "url".to_string(), "category".to_string()])
+    //             .build(),
+    //     )
+    //     .build();
+
     // Define bookmark function
-    let bookmark_function = FunctionDeclaration::builder()
-        .name("bookmark_page")
-        .description("Save a webpage as a bookmark")
-        .parameters(
-            FunctionDeclarationSchema::builder()
-                .r#type(SchemaType::Object)
-                .properties([
-                    (
-                        "title".to_string(),
-                        Schema::builder()
-                            .r#type(SchemaType::String)
-                            .description("Title of the webpage")
-                            .build(),
-                    ),
-                    (
-                        "url".to_string(),
-                        Schema::builder()
-                            .r#type(SchemaType::String)
-                            .description("URL of the webpage")
-                            .build(),
-                    ),
-                    (
-                        "category".to_string(),
-                        Schema::builder()
-                            .r#type(SchemaType::String)
-                            .description("Category for organizing bookmarks")
-                            .build(),
-                    ),
-                ])
-                .required(vec!["title".to_string(), "url".to_string(), "category".to_string()])
-                .build(),
-        )
-        .build();
+    let bookmark_function = FunctionDeclaration::new()
+        .with_name("bookmark_page")
+        .with_description("Save a webpage as a bookmark")
+        .with_parameters(&[
+            "title, string, Title of the webpage",
+            "url, string, URL of the webpage",
+            "category, string, Category for organizing bookmarks"
+        ]);
 
     // Test search and bookmark queries
     let queries = [

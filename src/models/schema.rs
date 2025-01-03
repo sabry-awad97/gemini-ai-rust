@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 
 /// The type of a property in a schema.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SchemaType {
     /// String type.
