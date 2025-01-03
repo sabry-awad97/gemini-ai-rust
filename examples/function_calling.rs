@@ -25,6 +25,19 @@ struct CalendarParams {
     duration_minutes: i32,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SearchResultParams {
+    query: String,
+    max_results: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BookmarkParams {
+    title: String,
+    url: String,
+    category: String,
+}
+
 /// Demonstrates weather function calling
 async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box<dyn Error>> {
     println!("\n{}", "🌤️  Weather Function Demo".bright_blue().bold());
@@ -348,6 +361,205 @@ async fn demonstrate_calendar_function(model: &GenerativeModel) -> Result<(), Bo
     Ok(())
 }
 
+/// Demonstrates function calling with Google Search integration
+async fn demonstrate_search_function(model: &GenerativeModel) -> Result<(), Box<dyn Error>> {
+    println!("\n{}", "🔍 Search Integration Demo".bright_cyan().bold());
+    println!("{}", "=====================".bright_cyan());
+    println!("{}", "Testing search and bookmark functions".bright_black());
+
+    // Define search and bookmark functions
+    let functions = vec![
+        FunctionDeclaration::builder()
+            .name("search_web")
+            .description("Search the web for information")
+            .parameters(
+                FunctionDeclarationSchema::builder()
+                    .r#type(SchemaType::Object)
+                    .properties([
+                        (
+                            "query".to_string(),
+                            Schema::builder()
+                                .r#type(SchemaType::String)
+                                .description("The search query")
+                                .build(),
+                        ),
+                        (
+                            "max_results".to_string(),
+                            Schema::builder()
+                                .r#type(SchemaType::Integer)
+                                .description("Maximum number of results to return (1-5)")
+                                .build(),
+                        ),
+                    ])
+                    .required(vec!["query".to_string(), "max_results".to_string()])
+                    .build(),
+            )
+            .build(),
+        FunctionDeclaration::builder()
+            .name("bookmark_page")
+            .description("Save a webpage as a bookmark")
+            .parameters(
+                FunctionDeclarationSchema::builder()
+                    .r#type(SchemaType::Object)
+                    .properties([
+                        (
+                            "title".to_string(),
+                            Schema::builder()
+                                .r#type(SchemaType::String)
+                                .description("Title of the webpage")
+                                .build(),
+                        ),
+                        (
+                            "url".to_string(),
+                            Schema::builder()
+                                .r#type(SchemaType::String)
+                                .description("URL of the webpage")
+                                .build(),
+                        ),
+                        (
+                            "category".to_string(),
+                            Schema::builder()
+                                .r#type(SchemaType::String)
+                                .description("Category for organizing bookmarks")
+                                .build(),
+                        ),
+                    ])
+                    .required(vec![
+                        "title".to_string(),
+                        "url".to_string(),
+                        "category".to_string(),
+                    ])
+                    .build(),
+            )
+            .build(),
+    ];
+
+    // Test search and bookmark queries
+    let queries = [
+        "Find me recent articles about Rust programming language and bookmark the most relevant one",
+        "Search for the best Italian restaurants in New York and save the top rated one",
+        "Look up information about machine learning with Python and bookmark a good tutorial",
+    ];
+
+    for query in queries {
+        println!("\n{}", "━".repeat(50).bright_black());
+        println!("{} {}", "👤 User:".blue().bold(), query);
+
+        let request = Request::builder()
+            .contents(vec![Content {
+                role: Some(Role::User),
+                parts: vec![Part::Text {
+                    text: query.to_string(),
+                }],
+            }])
+            .tools(vec![functions.clone().into()])
+            .build();
+
+        let response = model.generate_response(request).await?;
+        let function_calls = response.function_calls();
+
+        if function_calls.is_empty() {
+            println!(
+                "{} {}",
+                "🤖 Response:".green().bold(),
+                response.text().white()
+            );
+            continue;
+        }
+
+        for call in function_calls {
+            println!(
+                "{} {} with {}",
+                "📞 Function Call:".yellow().bold(),
+                call.name,
+                call.args
+            );
+
+            // Simulate function execution
+            let function_response = match call.name.as_str() {
+                "search_web" => {
+                    let params: SearchResultParams = serde_json::from_value(call.args.clone())?;
+                    FunctionResponse {
+                        name: call.name.clone(),
+                        response: json!({
+                            "status": "success",
+                            "query": params.query,
+                            "results": [
+                                {
+                                    "title": "Getting Started with Rust: A Beginner's Guide",
+                                    "url": "https://example.com/rust-guide",
+                                    "snippet": "A comprehensive guide to learning Rust programming language...",
+                                    "date": "2024-01-02"
+                                },
+                                {
+                                    "title": "Best Practices for Rust Development",
+                                    "url": "https://example.com/rust-best-practices",
+                                    "snippet": "Learn about memory safety, ownership, and other Rust concepts...",
+                                    "date": "2024-01-01"
+                                }
+                            ]
+                        }),
+                    }
+                }
+                "bookmark_page" => {
+                    let params: BookmarkParams = serde_json::from_value(call.args.clone())?;
+                    FunctionResponse {
+                        name: call.name.clone(),
+                        response: json!({
+                            "status": "success",
+                            "message": format!("Bookmarked '{}' in category '{}'", params.title, params.category),
+                            "bookmark_id": "bm_123456",
+                            "details": {
+                                "title": params.title,
+                                "url": params.url,
+                                "category": params.category,
+                                "date_added": "2024-01-03"
+                            }
+                        }),
+                    }
+                }
+                _ => FunctionResponse {
+                    name: call.name.clone(),
+                    response: json!({
+                        "status": "error",
+                        "message": "Unknown function"
+                    }),
+                },
+            };
+
+            let follow_up = Request::builder()
+                .contents(vec![
+                    Content {
+                        role: Some(Role::User),
+                        parts: vec![Part::Text {
+                            text: query.to_string(),
+                        }],
+                    },
+                    Content {
+                        role: Some(Role::Model),
+                        parts: vec![Part::FunctionCall {
+                            function_call: call,
+                        }],
+                    },
+                    Content {
+                        role: Some(Role::Function),
+                        parts: vec![Part::FunctionResponse { function_response }],
+                    },
+                ])
+                .build();
+
+            let final_response = model.generate_response(follow_up).await?;
+            println!(
+                "{} {}",
+                "🤖 Response:".green().bold(),
+                final_response.text().white()
+            );
+        }
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     println!(
@@ -367,6 +579,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Run function demonstrations
     demonstrate_weather_function(&model).await?;
     demonstrate_calendar_function(&model).await?;
+    demonstrate_search_function(&model).await?;
 
     println!("\n{}", "✨ Demo completed successfully!".green().bold());
     Ok(())
