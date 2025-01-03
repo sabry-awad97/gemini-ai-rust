@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Content, FunctionCall, HarmCategory, ModelInfo, Part};
+use super::{
+    grounding_metadata::GroundingMetadata, Content, FunctionCall, HarmCategory, ModelInfo, Part,
+};
 
 /// A response from the Gemini AI API.
 #[derive(Debug, Clone, Deserialize)]
@@ -100,15 +102,18 @@ pub struct Candidate {
     pub content: Content,
     /// The reason why the generation finished.
     pub finish_reason: Option<FinishReason>,
+    /// A message indicating why the generation finished.
+    pub finish_message: Option<String>,
     /// Safety ratings for different harm categories.
     pub safety_ratings: Option<Vec<SafetyRating>>,
-
     /// Citation information for this candidate.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub citation_metadata: Option<CitationMetadata>,
-
     /// Average log probabilities for the generation.
     pub avg_logprobs: Option<f64>,
+    /// Log-likelihood scores for the response tokens and top tokens.
+    pub logprobs_result: Option<LogprobsResult>,
+    /// Search grounding metadata.
+    pub grounding_metadata: Option<GroundingMetadata>,
 }
 
 /// Safety rating for a specific harm category.
@@ -145,6 +150,34 @@ pub struct Citation {
 
     /// The license of the citation.
     pub license: String,
+}
+
+/// Log probabilities for the response tokens and top tokens
+#[derive(Debug, Clone, Deserialize)]
+pub struct LogprobsResult {
+    /// Length = total number of decoding steps.
+    pub top_candidates: Vec<TopCandidates>,
+    /// Length = total number of decoding steps.
+    /// The chosen candidates may or may not be in topCandidates.
+    pub chosen_candidates: Vec<LogprobsCandidate>,
+}
+
+/// Candidates with top log probabilities at each decoding step
+#[derive(Debug, Clone, Deserialize)]
+pub struct TopCandidates {
+    /// Sorted by log probability in descending order.
+    pub candidates: Vec<LogprobsCandidate>,
+}
+
+/// Candidate with a log probability
+#[derive(Debug, Clone, Deserialize)]
+pub struct LogprobsCandidate {
+    /// The candidate's token string value.
+    pub token: String,
+    /// The candidate's token id value.
+    pub token_id: i32,
+    /// The candidate's log probability.
+    pub log_probability: f64,
 }
 
 /// Probability level for safety ratings.

@@ -4,6 +4,7 @@ use typed_builder::TypedBuilder;
 use super::{
     code_execution::{CodeExecutionConfig, CodeExecutionTool},
     function::{FunctionCallingConfig, FunctionDeclaration, FunctionDeclarationTool},
+    google_search::{GoogleSearch, GoogleSearchTool},
 };
 
 /// Configuration for tool behavior in the model.
@@ -25,6 +26,8 @@ pub enum Tool {
     FunctionDeclarationsTool(FunctionDeclarationTool),
     /// Tool that enables code execution.
     CodeExecutionTool(CodeExecutionTool),
+    /// Retrieval tool that is powered by Google search.
+    GoogleSearchTool(GoogleSearchTool),
 }
 
 impl Tool {
@@ -43,6 +46,11 @@ impl Tool {
     /// Default code execution tool with empty configuration.
     pub const CODE_EXECUTION: Self = Self::CodeExecutionTool(CodeExecutionTool {
         code_execution: Some(CodeExecutionConfig {}),
+    });
+
+    /// Default Google search tool with empty configuration.
+    pub const GOOGLE_SEARCH: Self = Self::GoogleSearchTool(GoogleSearchTool {
+        google_search: Some(GoogleSearch {}),
     });
 }
 

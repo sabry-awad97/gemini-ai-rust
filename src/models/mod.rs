@@ -2,6 +2,7 @@
 
 mod code_execution;
 mod function;
+mod google_search;
 mod info;
 mod model_params;
 mod part;
@@ -13,12 +14,14 @@ mod schema;
 mod stream;
 mod system_instruction;
 mod tool;
+mod grounding_metadata;
 
 pub use code_execution::CodeExecutionTool;
 pub use function::{
     FunctionCall, FunctionCallingConfig, FunctionCallingMode, FunctionDeclaration,
     FunctionDeclarationSchema, FunctionResponse,
 };
+pub use google_search::GoogleSearch;
 pub use info::ModelInfo;
 pub use model_params::{GenerationConfig, ModelParams};
 pub use part::Part;
