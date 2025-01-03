@@ -298,7 +298,7 @@ impl GenerativeModel {
     }
 
     /// Get information about a specific model
-    pub async fn get_model(&self, model_name: &str) -> Result<ModelInfo, GoogleGenerativeAIError> {
+    pub async fn get_model_info(&self, model_name: &str) -> Result<ModelInfo, GoogleGenerativeAIError> {
         let url = format!(
             "{}/{}/models/{}",
             DEFAULT_BASE_URL, DEFAULT_API_VERSION, model_name
