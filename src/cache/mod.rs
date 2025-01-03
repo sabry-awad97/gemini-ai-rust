@@ -112,8 +112,17 @@ impl CacheManager {
             .query(&[("key", &self.api_key)])
             .json(&request)
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
+
+        // Check if response is an error
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await?;
+            return Err(CacheError::OperationError(format!(
+                "Request failed with status {}: {}",
+                status, error_text
+            )));
+        }
 
         // Parse response
         let cache_info = response.json().await?;
@@ -128,8 +137,17 @@ impl CacheManager {
             .get(&url)
             .query(&[("key", &self.api_key)])
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
+
+        // Check if response is an error
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await?;
+            return Err(CacheError::OperationError(format!(
+                "Request failed with status {}: {}",
+                status, error_text
+            )));
+        }
 
         #[derive(Deserialize)]
         struct ListResponse {
@@ -152,8 +170,17 @@ impl CacheManager {
             .get(&url)
             .query(&[("key", &self.api_key)])
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
+
+        // Check if response is an error
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await?;
+            return Err(CacheError::OperationError(format!(
+                "Request failed with status {}: {}",
+                status, error_text
+            )));
+        }
 
         let cache_info = response.json().await?;
         Ok(cache_info)
@@ -177,8 +204,17 @@ impl CacheManager {
             .query(&[("key", &self.api_key)])
             .json(&serde_json::json!({ "ttl": ttl.into() }))
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
+
+        // Check if response is an error
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await?;
+            return Err(CacheError::OperationError(format!(
+                "Request failed with status {}: {}",
+                status, error_text
+            )));
+        }
 
         let cache_info = response.json().await?;
         Ok(cache_info)
@@ -191,12 +227,22 @@ impl CacheManager {
     /// * `name`: The resource name of the cached content
     pub async fn delete_cache(&self, name: &str) -> Result<(), CacheError> {
         let url = format!("{}/{}", CACHE_API_URL, name);
-        self.client
+        let response = self
+            .client
             .delete(&url)
             .query(&[("key", &self.api_key)])
             .send()
-            .await?
-            .error_for_status()?;
+            .await?;
+
+        // Check if response is an error
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await?;
+            return Err(CacheError::OperationError(format!(
+                "Request failed with status {}: {}",
+                status, error_text
+            )));
+        }
 
         Ok(())
     }

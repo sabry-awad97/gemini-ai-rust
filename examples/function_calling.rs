@@ -202,12 +202,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         // Create request with system instruction and functions
         let request = Request::builder()
-                .system_instruction(Content {
-                    role: Some(Role::System),
-                    parts: vec![Part::Text {
-                        text: "You are a helpful lighting system bot. You can turn lights on and off, and you can set the color. Do not perform any other tasks.".into(),
-                    }],
-                },)
+                .system_instruction(Some("You are a helpful lighting system bot. You can turn lights on and off, and you can set the color. Do not perform any other tasks.".into()))
                 .contents(vec![
                     Content {
                         role: Some(Role::User),
@@ -268,12 +263,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             // Create follow-up request with function response
             let follow_up = Request::builder()
-                    .system_instruction(Content {
-                        role: Some(Role::System),
-                        parts: vec![Part::Text {
-                            text: "You are a helpful lighting system bot. You can turn lights on and off, and you can set the color. Do not perform any other tasks.".into(),
-                        }],
-                    })
+                    .system_instruction(Some("You are a helpful lighting system bot. You can turn lights on and off, and you can set the color. Do not perform any other tasks.".into()))
                     .contents(vec![
                         Content {
                             role: Some(Role::User),
@@ -304,12 +294,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Create request with system instruction and functions
     let request = Request::builder()
-        .system_instruction(Content {
-            role: Some(Role::System),
-            parts: vec![Part::Text {
-                text: "You are a helpful lighting system bot. You can turn lights on and off, and you can set the color. Do not perform any other tasks.".into(),
-            }],
-        },)
+        .system_instruction(Some("You are a helpful lighting system bot. You can turn lights on and off, and you can set the color. Do not perform any other tasks.".into()))
         .contents(vec![
             Content {
                 role: Some(Role::User),

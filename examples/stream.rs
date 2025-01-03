@@ -16,12 +16,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Prepare the request
     let request = Request::builder()
-        .system_instruction(Content {
-            role: None,
-            parts: vec![Part::Text {
-                text: "You are a helpful assistant that translates English to German.".into(),
-            }],
-        })
+        .system_instruction(Some(
+            "You are a helpful assistant that translates English to German.".into(),
+        ))
         .contents(vec![Content {
             role: Some(Role::User),
             parts: vec![Part::Text {

@@ -13,7 +13,7 @@
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let client = GenerativeModel::from_env("gemini-1.5-flash")?;
 //!     let response = client.generate_content("Explain how AI works").await?;
-//!     response.display();
+//!     println!("{}", response.text());
 //!     Ok(())
 //! }
 //! ```

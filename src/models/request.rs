@@ -3,7 +3,10 @@
 use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 
-use super::{model_params::GenerationConfig, tool::ToolConfig, Part, SafetySetting, Tool};
+use super::{
+    model_params::GenerationConfig, system_instruction::SystemInstruction, tool::ToolConfig, Part,
+    SafetySetting, Tool,
+};
 
 /// A request to the Gemini AI API.
 #[derive(Debug, Clone, Serialize, TypedBuilder)]
@@ -21,7 +24,7 @@ pub struct Request {
     /// Optional system instruction for the model
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(into))]
-    pub system_instruction: Option<Content>,
+    pub system_instruction: Option<SystemInstruction>,
 
     /// Optional safety settings for content filtering
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -37,6 +40,11 @@ pub struct Request {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[builder(default, setter(strip_option, into))]
     pub tool_config: Option<ToolConfig>,
+
+    /// Optional cached content for the request
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default, setter(strip_option, into))]
+    pub cached_content: Option<String>,
 }
 
 /// Role of a participant in a chat

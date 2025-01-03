@@ -2,7 +2,7 @@
 
 use crate::{
     error::GoogleGenerativeAIError,
-    models::{Content, Part, Request, ResponseStream, Role},
+    models::{Content, Part, Request, ResponseStream, Role, SystemInstruction},
     GenerativeModel,
 };
 
@@ -14,7 +14,7 @@ pub struct ChatSession {
     /// Chat history
     history: Vec<Content>,
     /// System instruction for the chat
-    system_instruction: Option<Content>,
+    system_instruction: Option<SystemInstruction>,
 }
 
 impl ChatSession {
@@ -37,12 +37,10 @@ impl ChatSession {
     ///
     /// * `instruction` - The system instruction text
     pub fn with_system_instruction(mut self, instruction: impl Into<String>) -> Self {
-        self.system_instruction = Some(Content {
-            role: None,
-            parts: vec![Part::Text {
-                text: instruction.into(),
-            }],
-        });
+        self.system_instruction = Some(SystemInstruction::Content(Content {
+            role: Some(Role::System),
+            parts: vec![Part::text(instruction.into())],
+        }));
         self
     }
 
@@ -144,7 +142,7 @@ impl ChatSession {
     }
 
     /// Returns the system instruction if set.
-    pub fn system_instruction(&self) -> Option<&Content> {
+    pub fn system_instruction(&self) -> Option<&SystemInstruction> {
         self.system_instruction.as_ref()
     }
 }

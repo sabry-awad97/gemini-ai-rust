@@ -18,19 +18,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create managers
     let cache_manager = CacheManager::new(&api_key);
-    let model = GenerativeModel::from_env("gemini-1.5-flash-001")?;
+    let model = GenerativeModel::from_env("gemini-1.5-flash")?;
 
     // Example file path (you should create this file with some text content)
     let example_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("examples")
-        .join("test.txt");
+        .join("large_text.txt");
+
+    // Print instructions if the file doesn't exist
+    if !example_file.exists() {
+        eprintln!(
+            "Please create a file at {:?} with at least 32,768 tokens (about 100 pages) of text content.",
+            example_file
+        );
+        return Ok(());
+    }
 
     println!("Creating cache from file: {:?}", example_file);
 
     // Create cache with system instruction
     let system_instruction = Some(Content {
-        role: Some(Role::System),
         parts: vec![Part::text("You are an expert at analyzing transcripts.")],
+        role: Some(Role::System),
     });
 
     let cache_info = cache_manager

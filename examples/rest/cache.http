@@ -1,0 +1,73 @@
+@baseUrl = https://generativelanguage.googleapis.com/v1beta
+@apiKey = {{GOOGLE_API_KEY}}
+@model = gemini-1.5-flash-001
+
+### Create cached content
+# @name createCache
+POST {{baseUrl}}/cachedContents?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "model": "models/{{model}}",
+    "contents": [
+        {
+            "parts": [
+                {
+                    "inline_data": {
+                        "mime_type": "text/plain",
+                        "data": "BASE64_ENCODED_CONTENT"
+                    }
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "systemInstruction": {
+        "parts": [
+            {
+                "text": "You are an expert at analyzing transcripts."
+            }
+        ]
+    },
+    "ttl": "300s"
+}
+
+### Generate content using cached content
+# @name generateWithCache
+POST {{baseUrl}}/models/{{model}}:generateContent?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "contents": [
+        {
+            "parts": [
+                {
+                    "text": "Please summarize this transcript"
+                }
+            ],
+            "role": "user"
+        }
+    ],
+    "cachedContent": "{{createCache.response.body.name}}"
+}
+
+### List cached contents
+# @name listCaches
+GET {{baseUrl}}/cachedContents?key={{apiKey}}
+
+### Get specific cached content
+# @name getCache
+GET {{baseUrl}}/{{createCache.response.body.name}}?key={{apiKey}}
+
+### Update cached content TTL
+# @name updateCache
+PATCH {{baseUrl}}/{{createCache.response.body.name}}?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "ttl": "600s"
+}
+
+### Delete cached content
+# @name deleteCache
+DELETE {{baseUrl}}/{{createCache.response.body.name}}?key={{apiKey}}

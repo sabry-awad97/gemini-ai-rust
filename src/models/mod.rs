@@ -11,6 +11,7 @@ mod response;
 mod safety;
 mod schema;
 mod stream;
+mod system_instruction;
 mod tool;
 
 pub use code_execution::CodeExecutionTool;
@@ -30,6 +31,7 @@ pub use response::{
 pub use safety::{HarmCategory, SafetySetting, SafetyThreshold};
 pub use schema::{Schema, SchemaType};
 pub use stream::ResponseStream;
+pub use system_instruction::SystemInstruction;
 pub use tool::{Tool, ToolConfig};
 
 /// Alias for the Schema type

@@ -1,4 +1,5 @@
 use dotenv::dotenv;
+use futures::StreamExt;
 use gemini_ai_rust::{
     models::{Content, Part, Request, Role},
     GenerativeModel,
@@ -6,31 +7,31 @@ use gemini_ai_rust::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load environment variables from .env file
     dotenv().ok();
 
-    // Create a new client from environment variables
-    let client = GenerativeModel::from_env("gemini-1.5-flash")?;
+    // Create a new model instance
+    let model = GenerativeModel::from_env("gemini-1.5-pro")?;
 
+    // Create a request with system instruction
     let request = Request::builder()
-        .system_instruction(Content {
-            role: None,
-            parts: vec![Part::Text {
-                text: "You are a cat. Your name is Neko.".into(),
-            }],
-        })
+        .system_instruction(Some("You are a cat. Your name is Neko.".into()))
         .contents(vec![Content {
             role: Some(Role::User),
-            parts: vec![Part::Text {
-                text: "Who are you?".into(),
-            }],
+            parts: vec![Part::text("What's your name and what do you like to do?")],
         }])
         .build();
 
-    // Generate content with system instruction
-    let response = client.generate_response(request).await?;
-
-    // Display the response
-    println!("{}", response.text());
+    // Generate a response
+    println!("Generating response...");
+    let mut stream = model.stream_generate_response(request).await?;
+    while let Some(response) = stream.next().await {
+        match response {
+            Ok(response) => print!("{}", response.text()),
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+    println!();
 
     Ok(())
 }
