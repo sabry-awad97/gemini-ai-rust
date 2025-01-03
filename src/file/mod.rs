@@ -116,6 +116,13 @@ impl GoogleAIFileManager {
         }
     }
 
+    /// Creates a new instance of the file manager using the GOOGLE_API_KEY environment variable.
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("GOOGLE_API_KEY")
+            .expect("GOOGLE_API_KEY environment variable must be set must be set");
+        Self::new(api_key)
+    }
+
     /// Deletes all files with the specified display name.
     /// Returns the number of files deleted.
     pub async fn delete_files_by_display_name(
@@ -145,10 +152,10 @@ impl GoogleAIFileManager {
     ///
     /// # Returns
     /// Information about the uploaded file.
-    pub async fn upload_file(
+    pub async fn upload_file<A: AsRef<Path>, I: Into<Option<String>>>(
         &self,
-        file_path: impl AsRef<Path>,
-        display_name: impl Into<Option<String>>,
+        file_path: A,
+        display_name: I,
     ) -> Result<FileInfo, FileError> {
         let file_path = file_path.as_ref();
         let file_size = fs::metadata(file_path)
