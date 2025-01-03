@@ -2,16 +2,84 @@ use colored::*;
 use dotenv::dotenv;
 use gemini_ai_rust::{
     models::{
-        Content, FunctionDeclaration, FunctionDeclarationSchema, FunctionResponse, Part, Request,
-        Role, Schema, SchemaType, Tool,
+        Content,   FunctionDeclaration,
+        FunctionDeclarationSchema, FunctionResponse, Part, Request, Role, Schema, SchemaType,
+         Tool, Response,
     },
     GenerativeModel,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::error::Error;
+use std::{error::Error, time::Duration};
+use tokio::time::sleep;
 
-// Define custom function parameter structs
+const RETRY_ATTEMPTS: u32 = 3;
+const INITIAL_RETRY_DELAY_MS: u64 = 1000;
+const MAX_RETRY_DELAY_MS: u64 = 5000;
+
+/// Helper function to handle rate limiting and retries
+async fn generate_response_with_retry(
+    model: &GenerativeModel,
+    request: Request,
+    operation: &str,
+) -> Result<Response, Box<dyn Error>> {
+    let mut attempt = 0;
+    let mut last_error = None;
+    let mut delay_ms = INITIAL_RETRY_DELAY_MS;
+
+    while attempt < RETRY_ATTEMPTS {
+        match model.generate_response(request.clone()).await {
+            Ok(response) => {
+                if attempt > 0 {
+                    println!(
+                        "{} {} (attempt {}/{})",
+                        "✓".green(),
+                        operation,
+                        attempt + 1,
+                        RETRY_ATTEMPTS
+                    );
+                }
+                return Ok(response);
+            }
+            Err(e) => {
+                attempt += 1;
+                last_error = Some(e);
+
+                if attempt < RETRY_ATTEMPTS {
+                    let error_msg = last_error.as_ref().unwrap().to_string();
+                    if error_msg.contains("429") || error_msg.contains("RESOURCE_EXHAUSTED") {
+                        println!(
+                            "{} Rate limit hit for {}. Retrying in {} ms... (attempt {}/{})",
+                            "⚠️".yellow(),
+                            operation,
+                            delay_ms,
+                            attempt,
+                            RETRY_ATTEMPTS
+                        );
+                        sleep(Duration::from_millis(delay_ms)).await;
+                        // Exponential backoff with max delay
+                        delay_ms = (delay_ms * 2).min(MAX_RETRY_DELAY_MS);
+                    } else {
+                        // For other errors, retry with same delay
+                        println!(
+                            "{} Error in {}: {}. Retrying... (attempt {}/{})",
+                            "⚠️".yellow(),
+                            operation,
+                            error_msg,
+                            attempt,
+                            RETRY_ATTEMPTS
+                        );
+                        sleep(Duration::from_millis(delay_ms)).await;
+                    }
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap().into())
+}
+
+/// Define custom function parameter structs
 #[derive(Debug, Serialize, Deserialize)]
 struct WeatherParams {
     location: String,
@@ -94,8 +162,11 @@ async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box
             .tools(vec![Tool::GOOGLE_SEARCH])
             .build();
 
-        let search_response = model.generate_response(search_request).await?;
+        let search_response = generate_response_with_retry(model, search_request, "weather search").await?;
         display_grounding_metadata(&search_response);
+
+        // Add a small delay between requests to help with rate limiting
+        sleep(Duration::from_millis(500)).await;
 
         // Now use the weather function with the real data
         let weather_request = Request::builder()
@@ -114,7 +185,7 @@ async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box
             .tools(vec![vec![get_weather.clone()].into()])
             .build();
 
-        let weather_response = model.generate_response(weather_request).await?;
+        let weather_response = generate_response_with_retry(model, weather_request, "weather function").await?;
         let function_calls = weather_response.function_calls();
 
         if function_calls.is_empty() {
@@ -149,10 +220,13 @@ async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box
                         },
                         "visibility": 10
                     },
-                    "timestamp": "2024-01-03T11:56:42+02:00",
+                    "timestamp": "2024-01-03T11:59:18+02:00",
                     "note": "Data based on real-time search results"
                 }),
             };
+
+            // Add a small delay before the follow-up request
+            sleep(Duration::from_millis(500)).await;
 
             let follow_up = Request::builder()
                 .contents(vec![
@@ -173,9 +247,12 @@ async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box
                 ])
                 .build();
 
-            let final_response = model.generate_response(follow_up).await?;
+            let final_response = generate_response_with_retry(model, follow_up, "weather summary").await?;
             println!("{} {}", "🤖 Response:".green().bold(), final_response.text().white());
         }
+
+        // Add a delay between different weather queries
+        sleep(Duration::from_millis(1000)).await;
     }
 
     Ok(())
@@ -269,7 +346,7 @@ async fn demonstrate_calendar_function(model: &GenerativeModel) -> Result<(), Bo
             .tools(vec![calendar_functions.clone().into()])
             .build();
 
-        let response = model.generate_response(request).await?;
+        let response = generate_response_with_retry(model, request, "calendar function").await?;
         let function_calls = response.function_calls();
 
         if function_calls.is_empty() {
@@ -359,12 +436,147 @@ async fn demonstrate_calendar_function(model: &GenerativeModel) -> Result<(), Bo
                 ])
                 .build();
 
-            let final_response = model.generate_response(follow_up).await?;
+            let final_response = generate_response_with_retry(model, follow_up, "calendar summary").await?;
             println!(
                 "{} {}",
                 "🤖 Response:".green().bold(),
                 final_response.text().white()
             );
+        }
+    }
+
+    Ok(())
+}
+
+/// Demonstrates function calling with Google Search integration
+async fn demonstrate_search_function(model: &GenerativeModel) -> Result<(), Box<dyn Error>> {
+    println!("\n{}", "🔍 Search Integration Demo".bright_cyan().bold());
+    println!("{}", "=====================".bright_cyan());
+    println!("{}", "Testing search and bookmark functions".bright_black());
+
+    // Define bookmark function
+    let bookmark_function = FunctionDeclaration::builder()
+        .name("bookmark_page")
+        .description("Save a webpage as a bookmark")
+        .parameters(
+            FunctionDeclarationSchema::builder()
+                .r#type(SchemaType::Object)
+                .properties([
+                    (
+                        "title".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .description("Title of the webpage")
+                            .build(),
+                    ),
+                    (
+                        "url".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .description("URL of the webpage")
+                            .build(),
+                    ),
+                    (
+                        "category".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .description("Category for organizing bookmarks")
+                            .build(),
+                    ),
+                ])
+                .required(vec!["title".to_string(), "url".to_string(), "category".to_string()])
+                .build(),
+        )
+        .build();
+
+    // Test search and bookmark queries
+    let queries = [
+        "Find me recent articles about Rust programming language and bookmark the most relevant one",
+        "Search for the best Italian restaurants in New York and save the top rated one",
+        "Look up information about machine learning with Python and bookmark a good tutorial",
+    ];
+
+    for query in queries {
+        println!("\n{}", "━".repeat(50).bright_black());
+        println!("{} {}", "👤 User:".blue().bold(), query);
+
+        // First, perform the search
+        let search_request = Request::builder()
+            .contents(vec![Content {
+                role: None,
+                parts: vec![Part::Text { text: query.into() }],
+            }])
+            .tools(vec![Tool::GOOGLE_SEARCH])
+            .build();
+
+        let search_response = generate_response_with_retry(model, search_request, "search").await?;
+        display_grounding_metadata(&search_response);
+
+        // Now, ask the model to bookmark the most relevant result
+        let bookmark_request = Request::builder()
+            .contents(vec![
+                Content {
+                    role: Some(Role::User),
+                    parts: vec![Part::Text { text: query.into() }],
+                },
+                Content {
+                    role: Some(Role::Model),
+                    parts: vec![Part::Text { 
+                        text: "Based on the search results above, I'll help you bookmark the most relevant page.".to_string() 
+                    }],
+                },
+            ])
+            .tools(vec![vec![bookmark_function.clone()].into()])
+            .build();
+
+        let bookmark_response = generate_response_with_retry(model, bookmark_request, "bookmark").await?;
+        let function_calls = bookmark_response.function_calls();
+
+        if function_calls.is_empty() {
+            println!("{} {}", "🤖 Response:".green().bold(), bookmark_response.text().white());
+            continue;
+        }
+
+        for call in function_calls {
+            println!("{} {} with {}", "📞 Function Call:".yellow().bold(), call.name, call.args);
+
+            let params: BookmarkParams = serde_json::from_value(call.args.clone())?;
+            let function_response = FunctionResponse {
+                name: call.name.clone(),
+                response: json!({
+                    "status": "success",
+                    "message": format!("Bookmarked '{}' in category '{}'", params.title, params.category),
+                    "bookmark_id": "bm_123456",
+                    "details": {
+                        "title": params.title,
+                        "url": params.url,
+                        "category": params.category,
+                        "date_added": "2024-01-03"
+                    }
+                }),
+            };
+
+            let follow_up = Request::builder()
+                .contents(vec![
+                    Content {
+                        role: Some(Role::User),
+                        parts: vec![Part::Text {
+                            text: query.to_string(),
+                        }],
+                    },
+                    Content {
+                        role: Some(Role::Model),
+                        parts: vec![Part::FunctionCall { function_call: call }],
+                    },
+                    Content {
+                        role: Some(Role::Function),
+                        parts: vec![Part::FunctionResponse { function_response }],
+                    },
+                ])
+                .build();
+
+            let final_response = generate_response_with_retry(model, follow_up, "bookmark summary").await?;
+            println!("{} {}", "🤖 Response:".green().bold(), final_response.text().white());
         }
     }
 
@@ -433,141 +645,6 @@ fn display_grounding_metadata(response: &gemini_ai_rust::models::Response) {
             }
         }
     }
-}
-
-/// Demonstrates function calling with Google Search integration
-async fn demonstrate_search_function(model: &GenerativeModel) -> Result<(), Box<dyn Error>> {
-    println!("\n{}", "🔍 Search Integration Demo".bright_cyan().bold());
-    println!("{}", "=====================".bright_cyan());
-    println!("{}", "Testing search and bookmark functions".bright_black());
-
-    // Define bookmark function
-    let bookmark_function = FunctionDeclaration::builder()
-        .name("bookmark_page")
-        .description("Save a webpage as a bookmark")
-        .parameters(
-            FunctionDeclarationSchema::builder()
-                .r#type(SchemaType::Object)
-                .properties([
-                    (
-                        "title".to_string(),
-                        Schema::builder()
-                            .r#type(SchemaType::String)
-                            .description("Title of the webpage")
-                            .build(),
-                    ),
-                    (
-                        "url".to_string(),
-                        Schema::builder()
-                            .r#type(SchemaType::String)
-                            .description("URL of the webpage")
-                            .build(),
-                    ),
-                    (
-                        "category".to_string(),
-                        Schema::builder()
-                            .r#type(SchemaType::String)
-                            .description("Category for organizing bookmarks")
-                            .build(),
-                    ),
-                ])
-                .required(vec!["title".to_string(), "url".to_string(), "category".to_string()])
-                .build(),
-        )
-        .build();
-
-    // Test search and bookmark queries
-    let queries = [
-        "Find me recent articles about Rust programming language and bookmark the most relevant one",
-        "Search for the best Italian restaurants in New York and save the top rated one",
-        "Look up information about machine learning with Python and bookmark a good tutorial",
-    ];
-
-    for query in queries {
-        println!("\n{}", "━".repeat(50).bright_black());
-        println!("{} {}", "👤 User:".blue().bold(), query);
-
-        // First, perform the search
-        let search_request = Request::builder()
-            .contents(vec![Content {
-                role: None,
-                parts: vec![Part::Text { text: query.into() }],
-            }])
-            .tools(vec![Tool::GOOGLE_SEARCH])
-            .build();
-
-        let search_response = model.generate_response(search_request).await?;
-        display_grounding_metadata(&search_response);
-
-        // Now, ask the model to bookmark the most relevant result
-        let bookmark_request = Request::builder()
-            .contents(vec![
-                Content {
-                    role: Some(Role::User),
-                    parts: vec![Part::Text { text: query.into() }],
-                },
-                Content {
-                    role: Some(Role::Model),
-                    parts: vec![Part::Text { 
-                        text: "Based on the search results above, I'll help you bookmark the most relevant page.".to_string() 
-                    }],
-                },
-            ])
-            .tools(vec![vec![bookmark_function.clone()].into()])
-            .build();
-
-        let bookmark_response = model.generate_response(bookmark_request).await?;
-        let function_calls = bookmark_response.function_calls();
-
-        if function_calls.is_empty() {
-            println!("{} {}", "🤖 Response:".green().bold(), bookmark_response.text().white());
-            continue;
-        }
-
-        for call in function_calls {
-            println!("{} {} with {}", "📞 Function Call:".yellow().bold(), call.name, call.args);
-
-            let params: BookmarkParams = serde_json::from_value(call.args.clone())?;
-            let function_response = FunctionResponse {
-                name: call.name.clone(),
-                response: json!({
-                    "status": "success",
-                    "message": format!("Bookmarked '{}' in category '{}'", params.title, params.category),
-                    "bookmark_id": "bm_123456",
-                    "details": {
-                        "title": params.title,
-                        "url": params.url,
-                        "category": params.category,
-                        "date_added": "2024-01-03"
-                    }
-                }),
-            };
-
-            let follow_up = Request::builder()
-                .contents(vec![
-                    Content {
-                        role: Some(Role::User),
-                        parts: vec![Part::Text {
-                            text: query.to_string(),
-                        }],
-                    },
-                    Content {
-                        role: Some(Role::Model),
-                        parts: vec![Part::FunctionCall { function_call: call }],
-                    },
-                    Content {
-                        role: Some(Role::Function),
-                        parts: vec![Part::FunctionResponse { function_response }],
-                    },
-                ])
-                .build();
-
-            let final_response = model.generate_response(follow_up).await?;
-            println!("{} {}", "🤖 Response:".green().bold(), final_response.text().white());
-        }
-    }
-
-    Ok(())
 }
 
 #[tokio::main]
