@@ -11,7 +11,6 @@ use thiserror::Error;
 use tokio;
 
 const FILE_API_VERSION: &str = "v1beta";
-const FILE_UPLOAD_URL: &str = "https://generativelanguage.googleapis.com/upload";
 const FILE_API_URL: &str = "https://generativelanguage.googleapis.com";
 
 /// Represents possible errors that can occur during file operations.
@@ -32,9 +31,6 @@ pub enum FileError {
     /// Error occurred during file upload process.
     #[error("Upload failed: {0}")]
     UploadError(String),
-    /// Error occurred during file deletion.
-    #[error("Deletion failed: {0}")]
-    DeletionError(String),
     /// Invalid file ID provided.
     #[error("Invalid file ID: {0}")]
     InvalidFileId(String),
@@ -111,14 +107,36 @@ impl std::fmt::Display for FileState {
 pub struct GoogleAIFileManager {
     client: reqwest::Client,
     api_key: String,
+    base_url: String,
 }
 
 impl GoogleAIFileManager {
-    /// Creates a new instance of the file manager with the provided API key.
+    /// Creates a new instance of the Google AI File Manager.
+    ///
+    /// # Arguments
+    ///
+    /// * `api_key` - The Google AI API key to use for authentication. Can be any type that can be converted into a String.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new `GoogleAIFileManager` instance configured with the provided API key.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use gemini_ai_rust::file::GoogleAIFileManager;
+    ///
+    /// let api_key = "your-api-key-here";
+    /// let file_manager = GoogleAIFileManager::new(api_key);
+    /// ```
     pub fn new(api_key: impl Into<String>) -> Self {
+        let base_url =
+            std::env::var("GOOGLE_BASE_URL").unwrap_or_else(|_| FILE_API_URL.to_string());
+
         Self {
             client: reqwest::Client::new(),
             api_key: api_key.into(),
+            base_url,
         }
     }
 
@@ -176,7 +194,7 @@ impl GoogleAIFileManager {
             .to_string();
 
         // Initial resumable upload request
-        let upload_url = format!("{}/{}/files", FILE_UPLOAD_URL, FILE_API_VERSION);
+        let upload_url = format!("{}/upload/{}/files", self.base_url, FILE_API_VERSION);
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert("X-Goog-Upload-Protocol", "resumable".parse().unwrap());
         headers.insert("X-Goog-Upload-Command", "start".parse().unwrap());
@@ -251,7 +269,7 @@ impl GoogleAIFileManager {
 
     /// Retrieves information about a file by its name.
     pub async fn get_file(&self, name: &str) -> Result<FileInfo, FileError> {
-        let url = format!("{}/{}/files/{}", FILE_API_URL, FILE_API_VERSION, name);
+        let url = format!("{}/{}/files/{}", self.base_url, FILE_API_VERSION, name);
         let response = self
             .client
             .get(&url)
@@ -267,29 +285,23 @@ impl GoogleAIFileManager {
     pub async fn delete_file(&self, file_id: &str) -> Result<(), FileError> {
         let url = format!(
             "{}/{}/files/{}?key={}",
-            FILE_API_URL,
+            self.base_url,
             FILE_API_VERSION,
             parse_file_id(file_id)?,
             self.api_key
         );
-        let response = self
-            .client
+        self.client
             .delete(&url)
             .header("x-goog-api-key", &self.api_key)
             .send()
             .await?;
-
-        if !response.status().is_success() {
-            let error_message = response.text().await?;
-            return Err(FileError::DeletionError(error_message));
-        }
 
         Ok(())
     }
 
     /// Lists all files available in the system.
     pub async fn list_files(&self) -> Result<Vec<FileInfo>, FileError> {
-        let url = format!("{}/{}/files", FILE_API_URL, FILE_API_VERSION);
+        let url = format!("{}/{}/files", self.base_url, FILE_API_VERSION);
         let response = self
             .client
             .get(&url)
