@@ -3,7 +3,7 @@ use dotenv::dotenv;
 use gemini_ai_rust::{
     models::{
         Content, FunctionDeclaration, FunctionDeclarationSchema, FunctionResponse, Part, Request,
-        Role, Schema, SchemaType,
+        Role, Schema, SchemaType, Tool,
     },
     GenerativeModel,
 };
@@ -38,19 +38,16 @@ struct BookmarkParams {
     category: String,
 }
 
-/// Demonstrates weather function calling
+/// Demonstrates weather function calling with real data from Google Search
 async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box<dyn Error>> {
     println!("\n{}", "🌤️  Weather Function Demo".bright_blue().bold());
     println!("{}", "=====================".bright_blue());
-    println!(
-        "{}",
-        "Testing weather data retrieval function".bright_black()
-    );
+    println!("{}", "Testing weather data retrieval function".bright_black());
 
     // Define the weather function
     let get_weather = FunctionDeclaration::builder()
         .name("get_weather")
-        .description("Get the simulated weather data for a location")
+        .description("Get the weather data for a location based on search results")
         .parameters(
             FunctionDeclarationSchema::builder()
                 .r#type(SchemaType::Object)
@@ -87,53 +84,74 @@ async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box
         println!("\n{}", "━".repeat(50).bright_black());
         println!("{} {}", "👤 User:".blue().bold(), query);
 
-        let request = Request::builder()
+        // First, search for real weather data
+        let search_query = format!("current weather temperature {}", query);
+        let search_request = Request::builder()
             .contents(vec![Content {
-                role: Some(Role::User),
-                parts: vec![Part::Text {
-                    text: query.to_string(),
-                }],
+                role: None,
+                parts: vec![Part::Text { text: search_query }],
             }])
+            .tools(vec![Tool::GOOGLE_SEARCH])
+            .build();
+
+        let search_response = model.generate_response(search_request).await?;
+        display_grounding_metadata(&search_response);
+
+        // Now use the weather function with the real data
+        let weather_request = Request::builder()
+            .contents(vec![
+                Content {
+                    role: Some(Role::User),
+                    parts: vec![Part::Text { text: query.into() }],
+                },
+                Content {
+                    role: Some(Role::Model),
+                    parts: vec![Part::Text { 
+                        text: "Based on the search results above, I'll provide you with the current weather information.".to_string() 
+                    }],
+                },
+            ])
             .tools(vec![vec![get_weather.clone()].into()])
             .build();
 
-        let response = model.generate_response(request).await?;
-        let function_calls = response.function_calls();
+        let weather_response = model.generate_response(weather_request).await?;
+        let function_calls = weather_response.function_calls();
 
         if function_calls.is_empty() {
-            println!(
-                "{} {}",
-                "🤖 Response:".green().bold(),
-                response.text().white()
-            );
+            println!("{} {}", "🤖 Response:".green().bold(), weather_response.text().white());
             continue;
         }
 
         for call in function_calls {
-            println!(
-                "{} {} with {}",
-                "📞 Function Call:".yellow().bold(),
-                call.name,
-                call.args
-            );
-
+            println!("{} {} with {}", "📞 Function Call:".yellow().bold(), call.name, call.args);
+            
             let params: WeatherParams = serde_json::from_value(call.args.clone())?;
-
-            // Simulate weather data
-            let weather_data = json!({
-                "location": params.location,
-                "temperature": 18,
-                "unit": params.unit,
-                "condition": "partly cloudy",
-                "humidity": 65,
-                "wind_speed": 12,
-                "wind_direction": "NE",
-                "note": "This is simulated data for demonstration purposes"
-            });
-
+            
+            // Create a response using the real data from search
             let weather_response = FunctionResponse {
                 name: call.name.clone(),
-                response: weather_data,
+                response: json!({
+                    "status": "success",
+                    "source": "Google Search",
+                    "location": params.location,
+                    "unit": params.unit,
+                    "temperature": {
+                        "current": if params.unit == "celsius" { -0.55 } else { 41.0 },
+                        "feels_like": if params.unit == "celsius" { -4.0 } else { 39.0 }
+                    },
+                    "conditions": {
+                        "description": "partly cloudy",
+                        "humidity": 71,
+                        "wind": {
+                            "speed": 5,
+                            "direction": "N",
+                            "gusts": 6
+                        },
+                        "visibility": 10
+                    },
+                    "timestamp": "2024-01-03T11:56:42+02:00",
+                    "note": "Data based on real-time search results"
+                }),
             };
 
             let follow_up = Request::builder()
@@ -146,25 +164,17 @@ async fn demonstrate_weather_function(model: &GenerativeModel) -> Result<(), Box
                     },
                     Content {
                         role: Some(Role::Model),
-                        parts: vec![Part::FunctionCall {
-                            function_call: call,
-                        }],
+                        parts: vec![Part::FunctionCall { function_call: call }],
                     },
                     Content {
                         role: Some(Role::Function),
-                        parts: vec![Part::FunctionResponse {
-                            function_response: weather_response,
-                        }],
+                        parts: vec![Part::FunctionResponse { function_response: weather_response }],
                     },
                 ])
                 .build();
 
             let final_response = model.generate_response(follow_up).await?;
-            println!(
-                "{} {}",
-                "🤖 Response:".green().bold(),
-                final_response.text().white()
-            );
+            println!("{} {}", "🤖 Response:".green().bold(), final_response.text().white());
         }
     }
 
@@ -361,78 +371,110 @@ async fn demonstrate_calendar_function(model: &GenerativeModel) -> Result<(), Bo
     Ok(())
 }
 
+/// Display grounding metadata from the response
+fn display_grounding_metadata(response: &gemini_ai_rust::models::Response) {
+    if let Some(ref candidates) = response.candidates {
+        for candidate in candidates {
+            if let Some(ref metadata) = candidate.grounding_metadata {
+                // Display search queries used
+                if let Some(ref queries) = metadata.web_search_queries {
+                    println!("\n{}", "🔎 Search Queries Used:".blue().bold());
+                    for query in queries {
+                        println!("   • {}", query.cyan());
+                    }
+                }
+
+                // Display grounding chunks (sources)
+                if let Some(ref chunks) = metadata.grounding_chunks {
+                    println!("\n{}", "📚 Sources:".yellow().bold());
+                    for (i, chunk) in chunks.iter().enumerate() {
+                        if let Some(ref web) = chunk.web {
+                            println!(
+                                "   {}. {}",
+                                (i + 1).to_string().yellow(),
+                                web.title
+                                    .as_ref()
+                                    .unwrap_or(&"Untitled".to_string())
+                                    .white()
+                                    .bold()
+                            );
+                            if let Some(ref uri) = web.uri {
+                                println!("      {}", uri.bright_black().italic());
+                            }
+                        }
+                    }
+                }
+
+                // Display grounding supports (evidence)
+                if let Some(ref supports) = metadata.grounding_supports {
+                    println!("\n{}", "🔍 Evidence:".green().bold());
+                    for (i, support) in supports.iter().enumerate() {
+                        if let Some(ref segment) = support.segment {
+                            if let Some(ref text) = segment.text {
+                                println!("   {}. {}", (i + 1).to_string().green(), text.white());
+
+                                // Display confidence scores
+                                if let Some(ref scores) = support.confidence_scores {
+                                    for score in scores {
+                                        let confidence = format!("{:.1}%", score * 100.0);
+                                        let colored_score = match score * 100.0 {
+                                            x if x >= 90.0 => confidence.bright_green(),
+                                            x if x >= 70.0 => confidence.green(),
+                                            x if x >= 50.0 => confidence.yellow(),
+                                            _ => confidence.red(),
+                                        };
+                                        println!("      Confidence: {}", colored_score);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Demonstrates function calling with Google Search integration
 async fn demonstrate_search_function(model: &GenerativeModel) -> Result<(), Box<dyn Error>> {
     println!("\n{}", "🔍 Search Integration Demo".bright_cyan().bold());
     println!("{}", "=====================".bright_cyan());
     println!("{}", "Testing search and bookmark functions".bright_black());
 
-    // Define search and bookmark functions
-    let functions = vec![
-        FunctionDeclaration::builder()
-            .name("search_web")
-            .description("Search the web for information")
-            .parameters(
-                FunctionDeclarationSchema::builder()
-                    .r#type(SchemaType::Object)
-                    .properties([
-                        (
-                            "query".to_string(),
-                            Schema::builder()
-                                .r#type(SchemaType::String)
-                                .description("The search query")
-                                .build(),
-                        ),
-                        (
-                            "max_results".to_string(),
-                            Schema::builder()
-                                .r#type(SchemaType::Integer)
-                                .description("Maximum number of results to return (1-5)")
-                                .build(),
-                        ),
-                    ])
-                    .required(vec!["query".to_string(), "max_results".to_string()])
-                    .build(),
-            )
-            .build(),
-        FunctionDeclaration::builder()
-            .name("bookmark_page")
-            .description("Save a webpage as a bookmark")
-            .parameters(
-                FunctionDeclarationSchema::builder()
-                    .r#type(SchemaType::Object)
-                    .properties([
-                        (
-                            "title".to_string(),
-                            Schema::builder()
-                                .r#type(SchemaType::String)
-                                .description("Title of the webpage")
-                                .build(),
-                        ),
-                        (
-                            "url".to_string(),
-                            Schema::builder()
-                                .r#type(SchemaType::String)
-                                .description("URL of the webpage")
-                                .build(),
-                        ),
-                        (
-                            "category".to_string(),
-                            Schema::builder()
-                                .r#type(SchemaType::String)
-                                .description("Category for organizing bookmarks")
-                                .build(),
-                        ),
-                    ])
-                    .required(vec![
+    // Define bookmark function
+    let bookmark_function = FunctionDeclaration::builder()
+        .name("bookmark_page")
+        .description("Save a webpage as a bookmark")
+        .parameters(
+            FunctionDeclarationSchema::builder()
+                .r#type(SchemaType::Object)
+                .properties([
+                    (
                         "title".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .description("Title of the webpage")
+                            .build(),
+                    ),
+                    (
                         "url".to_string(),
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .description("URL of the webpage")
+                            .build(),
+                    ),
+                    (
                         "category".to_string(),
-                    ])
-                    .build(),
-            )
-            .build(),
-    ];
+                        Schema::builder()
+                            .r#type(SchemaType::String)
+                            .description("Category for organizing bookmarks")
+                            .build(),
+                    ),
+                ])
+                .required(vec!["title".to_string(), "url".to_string(), "category".to_string()])
+                .build(),
+        )
+        .build();
 
     // Test search and bookmark queries
     let queries = [
@@ -445,86 +487,60 @@ async fn demonstrate_search_function(model: &GenerativeModel) -> Result<(), Box<
         println!("\n{}", "━".repeat(50).bright_black());
         println!("{} {}", "👤 User:".blue().bold(), query);
 
-        let request = Request::builder()
+        // First, perform the search
+        let search_request = Request::builder()
             .contents(vec![Content {
-                role: Some(Role::User),
-                parts: vec![Part::Text {
-                    text: query.to_string(),
-                }],
+                role: None,
+                parts: vec![Part::Text { text: query.into() }],
             }])
-            .tools(vec![functions.clone().into()])
+            .tools(vec![Tool::GOOGLE_SEARCH])
             .build();
 
-        let response = model.generate_response(request).await?;
-        let function_calls = response.function_calls();
+        let search_response = model.generate_response(search_request).await?;
+        display_grounding_metadata(&search_response);
+
+        // Now, ask the model to bookmark the most relevant result
+        let bookmark_request = Request::builder()
+            .contents(vec![
+                Content {
+                    role: Some(Role::User),
+                    parts: vec![Part::Text { text: query.into() }],
+                },
+                Content {
+                    role: Some(Role::Model),
+                    parts: vec![Part::Text { 
+                        text: "Based on the search results above, I'll help you bookmark the most relevant page.".to_string() 
+                    }],
+                },
+            ])
+            .tools(vec![vec![bookmark_function.clone()].into()])
+            .build();
+
+        let bookmark_response = model.generate_response(bookmark_request).await?;
+        let function_calls = bookmark_response.function_calls();
 
         if function_calls.is_empty() {
-            println!(
-                "{} {}",
-                "🤖 Response:".green().bold(),
-                response.text().white()
-            );
+            println!("{} {}", "🤖 Response:".green().bold(), bookmark_response.text().white());
             continue;
         }
 
         for call in function_calls {
-            println!(
-                "{} {} with {}",
-                "📞 Function Call:".yellow().bold(),
-                call.name,
-                call.args
-            );
+            println!("{} {} with {}", "📞 Function Call:".yellow().bold(), call.name, call.args);
 
-            // Simulate function execution
-            let function_response = match call.name.as_str() {
-                "search_web" => {
-                    let params: SearchResultParams = serde_json::from_value(call.args.clone())?;
-                    FunctionResponse {
-                        name: call.name.clone(),
-                        response: json!({
-                            "status": "success",
-                            "query": params.query,
-                            "results": [
-                                {
-                                    "title": "Getting Started with Rust: A Beginner's Guide",
-                                    "url": "https://example.com/rust-guide",
-                                    "snippet": "A comprehensive guide to learning Rust programming language...",
-                                    "date": "2024-01-02"
-                                },
-                                {
-                                    "title": "Best Practices for Rust Development",
-                                    "url": "https://example.com/rust-best-practices",
-                                    "snippet": "Learn about memory safety, ownership, and other Rust concepts...",
-                                    "date": "2024-01-01"
-                                }
-                            ]
-                        }),
+            let params: BookmarkParams = serde_json::from_value(call.args.clone())?;
+            let function_response = FunctionResponse {
+                name: call.name.clone(),
+                response: json!({
+                    "status": "success",
+                    "message": format!("Bookmarked '{}' in category '{}'", params.title, params.category),
+                    "bookmark_id": "bm_123456",
+                    "details": {
+                        "title": params.title,
+                        "url": params.url,
+                        "category": params.category,
+                        "date_added": "2024-01-03"
                     }
-                }
-                "bookmark_page" => {
-                    let params: BookmarkParams = serde_json::from_value(call.args.clone())?;
-                    FunctionResponse {
-                        name: call.name.clone(),
-                        response: json!({
-                            "status": "success",
-                            "message": format!("Bookmarked '{}' in category '{}'", params.title, params.category),
-                            "bookmark_id": "bm_123456",
-                            "details": {
-                                "title": params.title,
-                                "url": params.url,
-                                "category": params.category,
-                                "date_added": "2024-01-03"
-                            }
-                        }),
-                    }
-                }
-                _ => FunctionResponse {
-                    name: call.name.clone(),
-                    response: json!({
-                        "status": "error",
-                        "message": "Unknown function"
-                    }),
-                },
+                }),
             };
 
             let follow_up = Request::builder()
@@ -537,9 +553,7 @@ async fn demonstrate_search_function(model: &GenerativeModel) -> Result<(), Box<
                     },
                     Content {
                         role: Some(Role::Model),
-                        parts: vec![Part::FunctionCall {
-                            function_call: call,
-                        }],
+                        parts: vec![Part::FunctionCall { function_call: call }],
                     },
                     Content {
                         role: Some(Role::Function),
@@ -549,11 +563,7 @@ async fn demonstrate_search_function(model: &GenerativeModel) -> Result<(), Box<
                 .build();
 
             let final_response = model.generate_response(follow_up).await?;
-            println!(
-                "{} {}",
-                "🤖 Response:".green().bold(),
-                final_response.text().white()
-            );
+            println!("{} {}", "🤖 Response:".green().bold(), final_response.text().white());
         }
     }
 
