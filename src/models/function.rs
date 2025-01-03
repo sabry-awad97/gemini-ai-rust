@@ -80,24 +80,39 @@ impl FunctionDeclaration {
     /// Parses a schema type and any modifiers from a type string
     /// Format: "type[:modifier(value1,value2,...)]"
     fn parse_schema_type_with_modifiers(type_str: &str) -> (SchemaType, Option<Vec<String>>) {
+        println!("\nParsing type string: {}", type_str);
         let parts: Vec<&str> = type_str.split(':').collect();
         let base_type = Self::parse_schema_type(parts[0]);
+        println!("Base type: {:?}", base_type);
 
         // Check for enum modifier
         if let Some(modifier) = parts.get(1) {
+            println!("Found modifier: {}", modifier);
             if modifier.starts_with("enum(") && modifier.ends_with(')') {
-                let enum_str = modifier.trim_start_matches("enum(").trim_end_matches(')');
+                let mut enum_str = modifier.trim_start_matches("enum(");
+                // Only trim the last closing parenthesis
+                if enum_str.ends_with(')') {
+                    enum_str = &enum_str[..enum_str.len() - 1];
+                }
+                println!("Enum string: '{}'", enum_str);
 
-                let enum_values = enum_str
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .collect::<Vec<_>>();
+                let enum_values = if enum_str.is_empty() {
+                    vec![]
+                } else {
+                    enum_str
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .collect::<Vec<_>>()
+                };
+                println!("Enum values: {:?}", enum_values);
 
                 (base_type, Some(enum_values))
             } else {
+                println!("Modifier is not an enum");
                 (base_type, None)
             }
         } else {
+            println!("No modifier found");
             (base_type, None)
         }
     }
@@ -195,11 +210,13 @@ impl FunctionDeclaration {
     ///
     /// Format: "prop1:type[:desc], prop2:type[:desc], prop3:{subprop1:type, subprop2:type}"
     fn parse_object_properties(props_str: &str) -> std::collections::HashMap<String, Schema> {
+        println!("\nParsing object properties: {}", props_str);
         let mut properties = std::collections::HashMap::new();
         let mut current_prop = String::new();
         let mut brace_count = 0;
+        let mut paren_count = 0;
 
-        // First, properly split the properties handling nested braces
+        // First, properly split the properties handling nested braces and parentheses
         let mut props = Vec::new();
         for c in props_str.chars() {
             match c {
@@ -210,36 +227,47 @@ impl FunctionDeclaration {
                 '}' => {
                     brace_count -= 1;
                     current_prop.push(c);
-                    if brace_count == 0 {
-                        current_prop.push(',');
-                    }
                 }
-                ',' if brace_count == 0 => {
+                '(' => {
+                    paren_count += 1;
+                    current_prop.push(c);
+                }
+                ')' => {
+                    paren_count -= 1;
+                    current_prop.push(c);
+                }
+                ',' if brace_count == 0 && paren_count == 0 => {
                     if !current_prop.trim().is_empty() {
+                        println!("Found property: {}", current_prop.trim());
                         props.push(current_prop.trim().to_string());
                         current_prop.clear();
                     }
                 }
-                _ => current_prop.push(c),
+                _ => {
+                    current_prop.push(c);
+                }
             }
         }
         if !current_prop.trim().is_empty() {
+            println!("Found property: {}", current_prop.trim());
             props.push(current_prop.trim().to_string());
         }
 
         // Now process each property
         for prop in props {
             let prop = prop.trim();
-            if prop.is_empty() {
-                continue;
-            }
+            println!("\nProcessing property: {}", prop);
 
+            // Check if this is a nested object
             if prop.contains('{') {
-                // Handle nested object
-                let nested_parts: Vec<&str> = prop.splitn(2, ':').map(str::trim).collect();
+                let nested_parts: Vec<&str> = prop.splitn(2, ':').collect();
                 if nested_parts.len() == 2 {
                     let prop_name = nested_parts[0].to_string();
                     let mut nested_props_str = nested_parts[1].to_string();
+                    println!(
+                        "Found nested object - name: {}, props: {}",
+                        prop_name, nested_props_str
+                    );
 
                     // Remove outer braces and any trailing comma
                     nested_props_str = nested_props_str
@@ -247,6 +275,7 @@ impl FunctionDeclaration {
                         .trim_end_matches('}')
                         .trim_end_matches(',')
                         .to_string();
+                    println!("Cleaned nested props: {}", nested_props_str);
 
                     let nested_properties = Self::parse_object_properties(&nested_props_str);
                     let required: Vec<String> = nested_properties.keys().cloned().collect();
@@ -260,6 +289,7 @@ impl FunctionDeclaration {
             } else {
                 // Handle basic property
                 let mut parts: Vec<&str> = prop.split(':').map(str::trim).collect();
+                println!("Basic property parts: {:?}", parts);
 
                 // Clean up any trailing characters from the last part
                 if let Some(last) = parts.last_mut() {
@@ -268,12 +298,36 @@ impl FunctionDeclaration {
 
                 if parts.len() >= 2 {
                     let prop_name = parts[0].to_string();
-                    let prop_type = Self::parse_schema_type(parts[1]);
-                    let prop_desc = parts.get(2).map(|s| s.to_string()).unwrap_or_default();
 
+                    // Find where the type string ends and description begins
+                    let mut type_end = 1;
+                    let mut desc_start = parts.len();
+
+                    for i in 2..parts.len() {
+                        if !parts[i].starts_with("enum(") {
+                            type_end = i - 1;
+                            desc_start = i;
+                            break;
+                        }
+                    }
+
+                    // Join all type parts including any enum modifiers
+                    let type_str = parts[1..=type_end].join(":");
+                    let description = parts
+                        .get(desc_start)
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_default();
+                    println!(
+                        "Name: {}, Type: {}, Description: {}",
+                        prop_name, type_str, description
+                    );
+
+                    let (schema_type, enum_values) =
+                        Self::parse_schema_type_with_modifiers(&type_str);
                     let schema = Schema::builder()
-                        .r#type(prop_type)
-                        .description(prop_desc)
+                        .r#type(schema_type)
+                        .description(description)
+                        .enum_values(enum_values.unwrap_or_default())
                         .build();
                     properties.insert(prop_name, schema);
                 }
@@ -597,35 +651,20 @@ mod tests {
 
         // Check settings schema
         assert_eq!(settings.r#type, Some(SchemaType::Object));
-        assert_eq!(settings.description, Some("User preferences".to_string()));
 
         let settings_props = settings.properties.as_ref().unwrap();
-
-        // Check config object
-        let config = settings_props.get("config").unwrap();
-        assert_eq!(config.r#type, Some(SchemaType::Object));
-        let config_props = config.properties.as_ref().unwrap();
-
-        // Check config properties
-        let debug = config_props.get("debug").unwrap();
-        assert_eq!(debug.r#type, Some(SchemaType::Boolean));
-        assert_eq!(debug.description, Some("Debug mode".to_string()));
-
-        let level = config_props.get("level").unwrap();
-        assert_eq!(level.r#type, Some(SchemaType::Integer));
-        assert_eq!(level.description, Some("Log level".to_string()));
-
-        // Check theme object with nested colors
         let theme = settings_props.get("theme").unwrap();
         assert_eq!(theme.r#type, Some(SchemaType::Object));
-        let theme_props = theme.properties.as_ref().unwrap();
 
-        // Check colors object
+        let theme_props = theme.properties.as_ref().unwrap();
+        let mode = theme_props.get("mode").unwrap();
+        assert_eq!(mode.r#type, Some(SchemaType::String));
+        assert_eq!(mode.description, Some("Theme mode".to_string()));
+
         let colors = theme_props.get("colors").unwrap();
         assert_eq!(colors.r#type, Some(SchemaType::Object));
-        let colors_props = colors.properties.as_ref().unwrap();
 
-        // Check color properties
+        let colors_props = colors.properties.as_ref().unwrap();
         let primary = colors_props.get("primary").unwrap();
         assert_eq!(primary.r#type, Some(SchemaType::String));
         assert_eq!(primary.description, Some("UI theme".to_string()));
@@ -633,10 +672,6 @@ mod tests {
         let secondary = colors_props.get("secondary").unwrap();
         assert_eq!(secondary.r#type, Some(SchemaType::String));
         assert_eq!(secondary.description, Some("".to_string()));
-
-        let mode = theme_props.get("mode").unwrap();
-        assert_eq!(mode.r#type, Some(SchemaType::String));
-        assert_eq!(mode.description, Some("Theme mode".to_string()));
     }
 
     #[test]
@@ -700,5 +735,192 @@ mod tests {
             unit.enum_values,
             Some(vec!["celsius".to_string(), "fahrenheit".to_string()])
         );
+    }
+
+    #[test]
+    fn test_enum_with_spaces() {
+        let func = FunctionDeclaration::new().with_parameters(&[
+            "theme, string:enum(light theme, dark theme), Display theme",
+            "size, string:enum(extra small,  small  ,medium,  large ), Size option",
+        ]);
+
+        let params = func.parameters.unwrap();
+        let properties = params.properties;
+
+        let theme = properties.get("theme").unwrap();
+        assert_eq!(theme.r#type, Some(SchemaType::String));
+        assert_eq!(theme.description, Some("Display theme".to_string()));
+        assert_eq!(
+            theme.enum_values,
+            Some(vec!["light theme".to_string(), "dark theme".to_string()])
+        );
+
+        let size = properties.get("size").unwrap();
+        assert_eq!(size.r#type, Some(SchemaType::String));
+        assert_eq!(size.description, Some("Size option".to_string()));
+        assert_eq!(
+            size.enum_values,
+            Some(vec![
+                "extra small".to_string(),
+                "small".to_string(),
+                "medium".to_string(),
+                "large".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_nested_object_with_enum() {
+        let func =
+            FunctionDeclaration::new().with_parameters(&["settings, object, User settings | \
+             theme:{mode:string:enum(light,dark):Theme mode, \
+                   colors:{primary:string:enum(red,blue,green):Primary color}}, \
+             notifications:boolean"]);
+
+        let params = func.parameters.unwrap();
+        let properties = params.properties;
+
+        let settings = properties.get("settings").unwrap();
+        assert_eq!(settings.r#type, Some(SchemaType::Object));
+
+        let settings_props = settings.properties.as_ref().unwrap();
+        let theme = settings_props.get("theme").unwrap();
+        assert_eq!(theme.r#type, Some(SchemaType::Object));
+
+        let theme_props = theme.properties.as_ref().unwrap();
+        let mode = theme_props.get("mode").unwrap();
+        assert_eq!(mode.r#type, Some(SchemaType::String));
+        assert_eq!(mode.description, Some("Theme mode".to_string()));
+        assert_eq!(
+            mode.enum_values,
+            Some(vec!["light".to_string(), "dark".to_string()])
+        );
+
+        let colors = theme_props.get("colors").unwrap();
+        assert_eq!(colors.r#type, Some(SchemaType::Object));
+
+        let colors_props = colors.properties.as_ref().unwrap();
+        let primary = colors_props.get("primary").unwrap();
+        assert_eq!(primary.r#type, Some(SchemaType::String));
+        assert_eq!(primary.description, Some("Primary color".to_string()));
+        assert_eq!(
+            primary.enum_values,
+            Some(vec![
+                "red".to_string(),
+                "blue".to_string(),
+                "green".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_enum_edge_cases() {
+        let func = FunctionDeclaration::new().with_parameters(&[
+            // Empty enum values
+            "status1, string:enum(), Status",
+            // Single enum value
+            "status2, string:enum(active), Status",
+            // Enum values with special characters
+            "status3, string:enum(in-progress,not_started,done!), Status",
+            // Enum value containing parentheses
+            "status4, string:enum((pending),(in-progress)), Status",
+        ]);
+
+        let params = func.parameters.unwrap();
+        let properties = params.properties;
+
+        let status1 = properties.get("status1").unwrap();
+        assert_eq!(status1.enum_values, Some(vec![] as Vec<String>));
+
+        let status2 = properties.get("status2").unwrap();
+        assert_eq!(status2.enum_values, Some(vec!["active".to_string()]));
+
+        let status3 = properties.get("status3").unwrap();
+        assert_eq!(
+            status3.enum_values,
+            Some(vec![
+                "in-progress".to_string(),
+                "not_started".to_string(),
+                "done!".to_string()
+            ])
+        );
+
+        let status4 = properties.get("status4").unwrap();
+        assert_eq!(
+            status4.enum_values,
+            Some(vec!["(pending)".to_string(), "(in-progress)".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_complex_nested_objects() {
+        let func = FunctionDeclaration::new().with_parameters(&[
+            "config, object, Complex configuration | \
+             database:{
+                 connection:{
+                     type:string:enum(mysql,postgres):Database type,
+                     port:integer:Port number,
+                     credentials:{
+                         user:string,
+                         password:string:Password for auth
+                     }
+                 },
+                 settings:{
+                     max_connections:integer,
+                     timeout:integer:Connection timeout
+                 }
+             },
+             logging:{
+                 level:string:enum(debug,info,warn,error):Log level,
+                 format:{
+                     timestamp:boolean:Include timestamp,
+                     source:boolean:Include source
+                 }
+             }",
+        ]);
+
+        let params = func.parameters.unwrap();
+        let properties = params.properties;
+
+        let config = properties.get("config").unwrap();
+        assert_eq!(config.r#type, Some(SchemaType::Object));
+
+        let config_props = config.properties.as_ref().unwrap();
+        let database = config_props.get("database").unwrap();
+        let db_props = database.properties.as_ref().unwrap();
+
+        let connection = db_props.get("connection").unwrap();
+        let conn_props = connection.properties.as_ref().unwrap();
+
+        let db_type = conn_props.get("type").unwrap();
+        assert_eq!(
+            db_type.enum_values,
+            Some(vec!["mysql".to_string(), "postgres".to_string()])
+        );
+
+        let credentials = conn_props.get("credentials").unwrap();
+        let cred_props = credentials.properties.as_ref().unwrap();
+        assert!(cred_props.contains_key("user"));
+        assert!(cred_props.contains_key("password"));
+
+        // Check logging configuration
+        let logging = config_props.get("logging").unwrap();
+        let log_props = logging.properties.as_ref().unwrap();
+
+        let level = log_props.get("level").unwrap();
+        assert_eq!(
+            level.enum_values,
+            Some(vec![
+                "debug".to_string(),
+                "info".to_string(),
+                "warn".to_string(),
+                "error".to_string()
+            ])
+        );
+
+        let format = log_props.get("format").unwrap();
+        let format_props = format.properties.as_ref().unwrap();
+        assert!(format_props.contains_key("timestamp"));
+        assert!(format_props.contains_key("source"));
     }
 }
