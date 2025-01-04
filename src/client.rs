@@ -1,9 +1,12 @@
 //! Client implementation for the Gemini AI API.
 
 use futures::StreamExt;
+use serde::Serialize;
 use tokio::sync::mpsc;
 
-use crate::models::{ListModelsResponse, ModelInfo, ResponseStream};
+use crate::models::{
+    EmbedContentRequest, EmbedContentResponse, ListModelsResponse, ModelInfo, ResponseStream,
+};
 use crate::{
     error::GoogleGenerativeAIError,
     models::{ModelParams, Request, RequestType, Response, TokenCountResponse},
@@ -71,15 +74,14 @@ impl GenerativeModel {
     /// # Errors
     ///
     /// Returns an error if the API request fails or if the response cannot be parsed.
-    async fn make_request(
+    async fn make_request<T>(
         &self,
         url: &str,
-        mut request: Request,
-    ) -> Result<reqwest::Response, GoogleGenerativeAIError> {
-        request.generation_config = request
-            .generation_config
-            .or_else(|| self.params.generation_config.clone());
-
+        request: T,
+    ) -> Result<reqwest::Response, GoogleGenerativeAIError>
+    where
+        T: Serialize,
+    {
         let response = self
             .client
             .post(url)
@@ -101,18 +103,21 @@ impl GenerativeModel {
     }
 
     /// Sends the HTTP request and processes the response.
-    async fn send_request<T: serde::de::DeserializeOwned>(
+    async fn send_request<T: serde::de::DeserializeOwned, R>(
         &self,
         url: &str,
-        request: Request,
-    ) -> Result<T, GoogleGenerativeAIError> {
+        request: R,
+    ) -> Result<T, GoogleGenerativeAIError>
+    where
+        R: Serialize,
+    {
         Ok(self.make_request(url, request).await?.json::<T>().await?)
     }
 
-    fn build_url(&self, request_type: RequestType) -> String {
+    fn build_url(&self, model: &str, request_type: RequestType) -> String {
         format!(
             "{}/{}/models/{}:{}?key={}",
-            DEFAULT_BASE_URL, DEFAULT_API_VERSION, self.params.model, request_type, self.api_key
+            DEFAULT_BASE_URL, DEFAULT_API_VERSION, model, request_type, self.api_key
         )
     }
 
@@ -129,8 +134,12 @@ impl GenerativeModel {
         &self,
         prompt: impl Into<String>,
     ) -> Result<Response, GoogleGenerativeAIError> {
-        let request = Request::with_prompt(prompt);
-        let url = self.build_url(RequestType::GenerateContent);
+        let mut request = Request::with_prompt(prompt);
+        request.generation_config = request
+            .generation_config
+            .or_else(|| self.params.generation_config.clone());
+        let url = self.build_url(self.params.model.as_str(), RequestType::GenerateContent);
+
         self.send_request(&url, request).await
     }
 
@@ -148,8 +157,12 @@ impl GenerativeModel {
         &self,
         request: impl Into<Request>,
     ) -> Result<Response, GoogleGenerativeAIError> {
-        let url = self.build_url(RequestType::GenerateContent);
-        self.send_request(&url, request.into()).await
+        let url = self.build_url(self.params.model.as_str(), RequestType::GenerateContent);
+        let mut request = request.into();
+        request.generation_config = request
+            .generation_config
+            .or_else(|| self.params.generation_config.clone());
+        self.send_request(&url, request).await
     }
 
     /// Generates streaming content using the Gemini AI API.
@@ -157,7 +170,10 @@ impl GenerativeModel {
         &self,
         request: impl Into<Request>,
     ) -> Result<ResponseStream, GoogleGenerativeAIError> {
-        let url = self.build_url(RequestType::StreamGenerateContent);
+        let url = self.build_url(
+            self.params.model.as_str(),
+            RequestType::StreamGenerateContent,
+        );
         let response = self.make_request(&url, request.into()).await?;
 
         let (tx, rx) = mpsc::channel(DEFAULT_CHANNEL_BUFFER_SIZE);
@@ -274,8 +290,12 @@ impl GenerativeModel {
         &self,
         request: impl Into<Request>,
     ) -> Result<TokenCountResponse, GoogleGenerativeAIError> {
-        let url = self.build_url(RequestType::CountTokens);
-        self.send_request(&url, request.into()).await
+        let url = self.build_url(self.params.model.as_str(), RequestType::CountTokens);
+        let mut request = request.into();
+        request.generation_config = request
+            .generation_config
+            .or_else(|| self.params.generation_config.clone());
+        self.send_request(&url, request).await
     }
 
     /// List all available models
@@ -298,7 +318,10 @@ impl GenerativeModel {
     }
 
     /// Get information about a specific model
-    pub async fn get_model_info(&self, model_name: &str) -> Result<ModelInfo, GoogleGenerativeAIError> {
+    pub async fn get_model_info(
+        &self,
+        model_name: &str,
+    ) -> Result<ModelInfo, GoogleGenerativeAIError> {
         let url = format!(
             "{}/{}/models/{}",
             DEFAULT_BASE_URL, DEFAULT_API_VERSION, model_name
@@ -317,5 +340,21 @@ impl GenerativeModel {
         }
 
         Ok(response.json().await?)
+    }
+
+    /// Generate embeddings for the given content using the specified model
+    ///
+    /// # Arguments
+    /// * `request` - The content and optional parameters for the embedding request
+    ///
+    /// # Returns
+    /// A Result containing either the embedding response or a GoogleGenerativeAIError
+    pub async fn embed_content(
+        &self,
+        model: &str,
+        request: impl Into<EmbedContentRequest>,
+    ) -> Result<EmbedContentResponse, GoogleGenerativeAIError> {
+        let url = self.build_url(model, RequestType::EmbedContent);
+        self.send_request(&url, request.into()).await
     }
 }

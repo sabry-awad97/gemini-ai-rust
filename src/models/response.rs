@@ -258,3 +258,17 @@ pub struct ListModelsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_page_token: Option<String>,
 }
+
+/// Response from the embedContent API endpoint
+#[derive(Debug, Deserialize)]
+pub struct EmbedContentResponse {
+    /// The generated embedding vector
+    pub embedding: Embedding,
+}
+
+/// Represents a vector embedding
+#[derive(Debug, Deserialize)]
+pub struct Embedding {
+    /// Vector of floating point values representing the embedding
+    pub values: Vec<f32>,
+}

@@ -1,0 +1,68 @@
+@baseUrl = https://generativelanguage.googleapis.com/v1beta
+@apiKey = {{GOOGLE_API_KEY}}
+@model = text-embedding-004
+
+### Generate Embeddings for Single Content
+# @name embedContent
+POST {{baseUrl}}/models/{{model}}:embedContent?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "model": "models/{{model}}",
+    "content": {
+        "parts": [
+            {
+                "text": "Hello world"
+            }
+        ]
+    }
+}
+
+### Generate Embeddings for Multiple Contents in Batch
+# @name batchEmbedContents
+POST {{baseUrl}}/models/{{model}}:batchEmbedContents?key={{apiKey}}
+Content-Type: application/json
+
+{
+    "requests": [
+        {
+            "model": "models/{{model}}",
+            "content": {
+                "parts": [
+                    {
+                        "text": "What is the meaning of life?"
+                    }
+                ]
+            }
+        },
+        {
+            "model": "models/{{model}}",
+            "content": {
+                "parts": [
+                    {
+                        "text": "How much wood would a woodchuck chuck?"
+                    }
+                ]
+            }
+        },
+        {
+            "model": "models/{{model}}",
+            "content": {
+                "parts": [
+                    {
+                        "text": "How does the brain work?"
+                    }
+                ]
+            }
+        }
+    ]
+}
+
+### Response Structure
+# embedContent response includes:
+# - embedding: Object containing:
+#   - values: Array of floating-point numbers representing the embedding vector
+#
+# batchEmbedContents response includes:
+# - embeddings: Array of embedding objects, each containing:
+#   - values: Array of floating-point numbers representing the embedding vector

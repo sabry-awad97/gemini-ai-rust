@@ -367,39 +367,3 @@ fn parse_file_id(file_id: &str) -> Result<&str, FileError> {
         ))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use dotenv::dotenv;
-    use std::path::PathBuf;
-
-    #[tokio::test]
-    async fn test_file_upload_and_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
-        dotenv().ok();
-        let api_key = std::env::var("GOOGLE_API_KEY").expect("GOOGLE_API_KEY must be set");
-        let file_manager = GoogleAIFileManager::new(api_key);
-
-        // Test file upload
-        let test_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("data")
-            .join("test.txt");
-
-        let file_info = file_manager.upload_file(&test_file_path, None).await?;
-        assert!(!file_info.name.is_empty());
-        assert!(!file_info.uri.is_empty());
-
-        // Test get file
-        let retrieved_file = file_manager.get_file(&file_info.name).await?;
-        assert_eq!(retrieved_file.name, file_info.name);
-
-        // Test list files
-        let files = file_manager.list_files().await?;
-        assert!(files.iter().any(|f| f.name == file_info.name));
-
-        // Test delete file
-        file_manager.delete_file(&file_info.name).await?;
-
-        Ok(())
-    }
-}

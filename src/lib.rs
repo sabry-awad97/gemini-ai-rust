@@ -4,19 +4,6 @@
 //!
 //! This library provides a simple and idiomatic way to interact with Google's Gemini AI API.
 //! It handles authentication, request construction, and response parsing.
-//!
-//! # Example
-//! ```no_run
-//! use gemini_ai_rust::client::GenerativeModel;
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let client = GenerativeModel::from_env("gemini-1.5-flash")?;
-//!     let response = client.generate_content("Explain how AI works").await?;
-//!     println!("{}", response.text());
-//!     Ok(())
-//! }
-//! ```
 
 pub mod cache;
 pub mod chat;

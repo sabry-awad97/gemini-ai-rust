@@ -4,9 +4,9 @@ use gemini_ai_rust::client::GenerativeModel;
 use std::error::Error;
 
 /// Display model information in a formatted way
-fn display_model_info(model_name: &str, model: &gemini_ai_rust::models::ModelInfo) {
+fn display_model_info(model: &gemini_ai_rust::models::ModelInfo) {
     println!("\n{}", "━".repeat(80).bright_black());
-    println!("{} {}", "🤖 Name:".blue().bold(), model_name.bright_blue());
+    println!("{} {}", "🤖 Name:".blue().bold(), model.name.bright_blue());
     println!(
         "{} {}",
         "📋 Display Name:".cyan().bold(),
@@ -81,7 +81,7 @@ async fn display_model_details(
     );
 
     match model.get_model_info(model_name).await {
-        Ok(model_info) => display_model_info(model_name, &model_info),
+        Ok(model_info) => display_model_info(&model_info),
         Err(e) => println!(
             "{} {}",
             "❌ Error:".red().bold(),
@@ -108,7 +108,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("{}", "✓ Environment loaded".green());
 
     // Initialize the model
-    let model = GenerativeModel::from_env("gemini-ai-rust")?;
+    let model = GenerativeModel::from_env("gemini-1.5-pro-latest")?;
     println!("{}", "✓ Gemini client initialized".green());
 
     // List all available models
@@ -119,7 +119,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     match model.list_models().await {
         Ok(models) => {
             for model_info in &models.models {
-                display_model_info(&model_info.name, model_info);
+                display_model_info(model_info);
             }
         }
         Err(e) => {
@@ -133,7 +133,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Get details for specific models
-    let featured_models = ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-pro-vision"];
+    let featured_models = [
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro-latest",
+        "gemini-1.5-pro",
+        "gemini-pro-vision",
+    ];
 
     println!(
         "\n{}",

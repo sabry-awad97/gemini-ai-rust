@@ -86,3 +86,52 @@ impl Request {
             .build()
     }
 }
+
+/// Request structure for the embedContent API endpoint
+#[derive(Debug, Serialize)]
+pub struct EmbedContentRequest {
+    /// The content to generate embeddings for
+    pub content: Content,
+    /// Optional task type to optimize the embedding for
+    pub task_type: Option<TaskType>,
+}
+
+impl EmbedContentRequest {
+    /// Creates a new EmbedContentRequest with the given prompt and optional task type.
+    ///
+    /// # Arguments
+    ///
+    /// * `prompt` - The text prompt to generate embeddings for
+    /// * `task_type` - The task type to optimize the embedding for
+    ///
+    /// # Returns
+    ///
+    /// A new EmbedContentRequest
+    pub fn new(prompt: &str, task_type: Option<TaskType>) -> Self {
+        Self {
+            content: Content {
+                role: None,
+                parts: vec![Part::Text {
+                    text: prompt.to_string(),
+                }],
+            },
+            task_type,
+        }
+    }
+}
+
+/// Type of task for which the embedding will be used
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum TaskType {
+    /// Optimize embedding for retrieval queries
+    RetrievalQuery,
+    /// Optimize embedding for retrieval documents
+    RetrievalDocument,
+    /// Optimize embedding for semantic similarity tasks
+    SemanticSimilarity,
+    /// Optimize embedding for classification tasks
+    Classification,
+    /// Optimize embedding for clustering tasks
+    Clustering,
+}

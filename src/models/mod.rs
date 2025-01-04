@@ -27,11 +27,11 @@ pub use google_search::GoogleSearch;
 pub use info::ModelInfo;
 pub use model_params::{GenerationConfig, ModelParams};
 pub use part::{FileData, InlineData, Part};
-pub use request::{Content, Request, Role};
+pub use request::{Content, EmbedContentRequest, Request, Role, TaskType};
 pub use request_type::RequestType;
 pub use response::{
-    Candidate, ListModelsResponse, Response, SafetyProbability, SafetyRating, TokenCountResponse,
-    UsageMetadata,
+    Candidate, EmbedContentResponse, Embedding, ListModelsResponse, Response, SafetyProbability,
+    SafetyRating, TokenCountResponse, UsageMetadata,
 };
 pub use safety::{HarmCategory, SafetySetting, SafetyThreshold};
 pub use schema::{Schema, SchemaType};
