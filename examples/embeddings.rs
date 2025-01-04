@@ -238,6 +238,63 @@ impl DocSearchEngine {
         }
         Ok(())
     }
+
+    // Function to list and display available embedding models
+    pub async fn list_available_models(&self) -> Result<(), Box<dyn Error>> {
+        list_embedding_models(&self.model).await
+    }
+}
+
+// Function to list and display available embedding models
+pub async fn list_embedding_models(model: &GenerativeModel) -> Result<(), Box<dyn Error>> {
+    println!("\n{}", "Available Models:".bright_green());
+    println!("{}", "═".repeat(50).bright_green());
+
+    let response = model.list_models().await?;
+
+    for model_info in response.models {
+        // Only show models that support embeddings
+        if model_info
+            .supported_generation_methods
+            .contains(&"embedContent".to_string())
+        {
+            println!("\n{}", "─".repeat(80).bright_black());
+            println!(
+                "{} {}",
+                "🤖 Name:".blue().bold(),
+                model_info.name.bright_blue()
+            );
+            println!(
+                "{} {}",
+                "📋 Display Name:".cyan().bold(),
+                model_info.display_name.bright_cyan()
+            );
+            println!(
+                "{} {}",
+                "📝 Description:".yellow().bold(),
+                model_info.description.bright_yellow()
+            );
+            println!(
+                "{} {}",
+                "🔢 Version:".magenta().bold(),
+                model_info.version.bright_magenta()
+            );
+
+            // Token limits
+            println!("\n{}", "📊 Token Limits:".green().bold());
+            println!(
+                "   {:<20} {}",
+                "Input Limit:".white(),
+                model_info.input_token_limit.to_string().bright_green()
+            );
+            println!(
+                "   {:<20} {}",
+                "Output Limit:".white(),
+                model_info.output_token_limit.to_string().bright_green()
+            );
+        }
+    }
+    Ok(())
 }
 
 // Pretty printing utilities
@@ -324,6 +381,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let model = GenerativeModel::from_env("embedding-001")?;
     let mut search_engine = DocSearchEngine::new(model, "embedding-001");
     PrettyPrinter::print_success("Search engine initialized");
+
+    // List available embedding models
+    println!("\nListing available embedding models...");
+    search_engine.list_available_models().await?;
 
     // Create sample technical documentation
     let documents = vec![
