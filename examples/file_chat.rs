@@ -385,9 +385,9 @@ impl FileChatManager {
                         return Err(ChatError::FileProcessing("File not found".into()));
                     }
                 }
-                Err(e) => {
+                Err(_e) => {
                     pb.finish_and_clear();
-                    return Err(ChatError::FileManagement(e));
+                    println!("{}", "⚠️  Could not verify cached file".yellow().bold());
                 }
             }
             pb.finish_and_clear();
@@ -492,7 +492,13 @@ impl FileChatManager {
             }
             Err(e) => {
                 pb.finish_and_clear();
-                Err(ChatError::FileManagement(e))
+                // Check if it's a decoding error (usually means empty response)
+                if e.to_string().contains("error decoding response body") {
+                    println!("{}", "No files to delete".bright_yellow());
+                    Ok(())
+                } else {
+                    Err(ChatError::FileManagement(e))
+                }
             }
         }
     }
@@ -524,7 +530,13 @@ impl FileChatManager {
             }
             Err(e) => {
                 pb.finish_and_clear();
-                Err(ChatError::FileManagement(e))
+                // Check if it's a decoding error (usually means empty response)
+                if e.to_string().contains("error decoding response body") {
+                    println!("{}", "No files found".bright_yellow());
+                    Ok(())
+                } else {
+                    Err(ChatError::FileManagement(e))
+                }
             }
         }
     }
