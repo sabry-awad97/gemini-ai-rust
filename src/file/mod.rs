@@ -104,6 +104,7 @@ impl std::fmt::Display for FileState {
 }
 
 /// Manager for handling file operations with the Gemini AI API.
+#[derive(Debug)]
 pub struct GoogleAIFileManager {
     client: reqwest::Client,
     api_key: String,
