@@ -7,7 +7,14 @@ use gemini_ai_rust::{
 };
 use pdf_extract::extract_text;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, io::Write};
+use sha2::{Digest, Sha256};
+use std::{
+    error::Error,
+    fs::{self, File},
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 use thiserror::Error;
 
 // Custom chat session implementation
@@ -78,14 +85,26 @@ pub enum ChatError {
     IoError(#[from] std::io::Error),
     #[error("PDF error: {0}")]
     PdfError(#[from] pdf_extract::OutputError),
+    #[error("Cache error: {0}")]
+    CacheError(String),
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
 }
 
 // Text chunk with metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct TextChunk {
     content: String,
     section: usize,
     embedding: Option<Vec<f32>>,
+}
+
+// Cache structure
+#[derive(Debug, Serialize, Deserialize)]
+struct DocumentCache {
+    text: String,
+    chunks: Vec<TextChunk>,
+    last_modified: chrono::DateTime<chrono::Utc>,
 }
 
 // Document chat manager
@@ -95,17 +114,81 @@ pub struct DocumentChatManager {
     chunks: Vec<TextChunk>,
     chat_session: Option<ChatSession>,
     chunk_size: usize,
+    cache_dir: PathBuf,
+    current_pdf_path: Option<String>,
 }
 
 impl DocumentChatManager {
     pub fn new(model: GenerativeModel, model_name: impl Into<String>, chunk_size: usize) -> Self {
+        let cache_dir = PathBuf::from(".cache/pdf_chat");
+        fs::create_dir_all(&cache_dir).unwrap_or_else(|_| {
+            eprintln!("Warning: Failed to create cache directory");
+        });
+
         Self {
             model,
             model_name: model_name.into(),
             chunks: Vec::new(),
             chat_session: None,
             chunk_size,
+            cache_dir,
+            current_pdf_path: None,
         }
+    }
+
+    fn get_cache_path(&self, pdf_path: &str) -> PathBuf {
+        // Create a unique cache file name based on the PDF path and last modified time
+        let pdf_path = Path::new(pdf_path);
+        let last_modified = fs::metadata(pdf_path)
+            .and_then(|m| m.modified())
+            .unwrap_or_else(|_| std::time::SystemTime::now());
+
+        let mut hasher = Sha256::new();
+        hasher.update(pdf_path.to_string_lossy().as_bytes());
+        hasher.update(format!("{:?}", last_modified).as_bytes());
+        let hash = hex::encode(hasher.finalize());
+
+        self.cache_dir.join(format!("{}.json", &hash[..16]))
+    }
+
+    fn load_cache(&self, pdf_path: &str) -> Result<Option<DocumentCache>, ChatError> {
+        let cache_path = self.get_cache_path(pdf_path);
+        if !cache_path.exists() {
+            return Ok(None);
+        }
+
+        let mut file = File::open(cache_path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        let cache: DocumentCache = serde_json::from_str(&contents)?;
+
+        // Verify if cache is still valid
+        let pdf_modified = fs::metadata(pdf_path)?.modified()?;
+        let cache_time: SystemTime = cache
+            .last_modified
+            .naive_utc()
+            .and_local_timezone(chrono::Utc)
+            .unwrap()
+            .into();
+
+        if pdf_modified > cache_time {
+            return Ok(None);
+        }
+
+        Ok(Some(cache))
+    }
+
+    fn save_cache(&self, pdf_path: &str, text: &str) -> Result<(), ChatError> {
+        let cache = DocumentCache {
+            text: text.to_string(),
+            chunks: self.chunks.clone(),
+            last_modified: chrono::Utc::now(),
+        };
+
+        let cache_path = self.get_cache_path(pdf_path);
+        let file = File::create(cache_path)?;
+        serde_json::to_writer_pretty(file, &cache)?;
+        Ok(())
     }
 
     pub fn process_text(&mut self, text: &str) -> Result<(), ChatError> {
@@ -144,12 +227,51 @@ impl DocumentChatManager {
     }
 
     pub async fn generate_embeddings(&mut self) -> Result<(), ChatError> {
+        let mut updated = false;
         for chunk in &mut self.chunks {
+            // Skip if embedding already exists
+            if chunk.embedding.is_some() {
+                continue;
+            }
+
             let request =
                 EmbedContentRequest::new(&chunk.content, Some(TaskType::RetrievalDocument), None);
             let response = self.model.embed_content(&self.model_name, request).await?;
             chunk.embedding = Some(response.embedding.values);
+            updated = true;
         }
+
+        // Update cache if any new embeddings were generated
+        if updated {
+            if let Some(path) = self.current_pdf_path.as_ref() {
+                self.save_cache(path, "")?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn process_pdf(&mut self, path: &str) -> Result<(), ChatError> {
+        // Store the PDF path for later use
+        self.current_pdf_path = Some(path.to_string());
+
+        // Try to load from cache first
+        if let Some(cache) = self.load_cache(path)? {
+            self.chunks = cache.chunks;
+            return Ok(());
+        }
+
+        // If not in cache, process the PDF
+        let text = extract_text(path)?;
+        if text.is_empty() {
+            return Err(ChatError::NoContent);
+        }
+
+        self.process_text(&text)?;
+
+        // Save to cache
+        self.save_cache(path, &text)?;
+
         Ok(())
     }
 
@@ -220,14 +342,6 @@ impl DocumentChatManager {
         chat_session.add_message("assistant", &answer);
 
         Ok(answer)
-    }
-
-    pub fn process_pdf(&mut self, path: &str) -> Result<(), ChatError> {
-        let text = extract_text(path)?;
-        if text.is_empty() {
-            return Err(ChatError::NoContent);
-        }
-        self.process_text(&text)
     }
 }
 
