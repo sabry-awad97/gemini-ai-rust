@@ -460,16 +460,15 @@ impl DocumentChatManager {
         chat_session.add_message("user", user_input);
 
         let prompt = format!(
-            "You are a helpful assistant analyzing a document. Use the following context to answer the user's question.\n\n\
+            "Use the following context to answer the user's question.\n\n\
              Context from the document:\n{}\n\n\
-             Chat history:\n{}\n\n\
-             Please provide a clear and concise answer based on the context. \
-             When referring to content, mention the page number where it appears.",
+             Chat history:\n{}\n\n",
             context,
             chat_session.get_formatted_history()
         );
 
         let request = Request::builder()
+            .system_instruction(Some("You are a helpful assistant analyzing a document. Please provide a clear and concise answer based on the context. When referring to content, mention the page number where it appears. Respond using Markdown.".into()))
             .contents(vec![Content {
                 role: None,
                 parts: vec![Part::Text { text: prompt }],
@@ -558,7 +557,7 @@ impl DocumentChatManager {
         let context = sections.join("\n\n");
 
         let prompt = format!(
-            "Please provide a concise summary of this document. Focus on the main topics and key points.\n\nDocument content:\n{}",
+            "Please provide a concise summary of this document. Focus on the main topics and key points.Carefully heed the user's instructions.\nRespond using Markdown.\n\nDocument content:\n{}",
             context
         );
 
@@ -701,15 +700,15 @@ impl PrettyPrinter {
     }
 
     pub fn print_streaming_message(text: &str, page_references: bool) {
+        let text = text.replace("**", "\x1b[1m").replace("`", "\x1b[36m");
         if page_references {
-            // Highlight page numbers in the format "page X" or "Page X"
             let re = Regex::new(r"([Pp]age\s+\d+)").unwrap();
-            let text = re.replace_all(text, |caps: &regex::Captures| {
+            let text = re.replace_all(&text, |caps: &regex::Captures| {
                 format!("{}", caps[1].bright_cyan().bold())
             });
-            print!("{}", text.white());
+            print!("{}\x1b[0m", text.white());
         } else {
-            print!("{}", text.white());
+            print!("{}\x1b[0m", text.white());
         }
         std::io::stdout().flush().unwrap();
     }
