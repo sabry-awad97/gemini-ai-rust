@@ -1,11 +1,14 @@
 use colored::*;
 use dotenv::dotenv;
+use futures::StreamExt;
 use gemini_ai_rust::{
     client::GenerativeModel,
     error::GoogleGenerativeAIError,
     models::{EmbedContentRequest, TaskType},
 };
+use indicatif::{ProgressBar, ProgressStyle};
 use pdf_extract::extract_text;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -13,9 +16,16 @@ use std::{
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
     time::SystemTime,
 };
 use thiserror::Error;
+use tokio::sync::Semaphore;
+
+const MAX_CONCURRENT_REQUESTS: usize = 5;
+const CHUNK_SIZE: usize = 1000; // Words per chunk
+const OVERLAP_PERCENTAGE: usize = 25; // Percentage of overlap between chunks
+const MAX_CACHE_SIZE_MB: u64 = 100; // Maximum cache size in MB
 
 // Custom chat session implementation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,6 +126,7 @@ pub struct DocumentChatManager {
     chunk_size: usize,
     cache_dir: PathBuf,
     current_pdf_path: Option<String>,
+    semaphore: Arc<Semaphore>,
 }
 
 impl DocumentChatManager {
@@ -133,6 +144,7 @@ impl DocumentChatManager {
             chunk_size,
             cache_dir,
             current_pdf_path: None,
+            semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS)),
         }
     }
 
@@ -191,68 +203,145 @@ impl DocumentChatManager {
         Ok(())
     }
 
-    pub fn process_text(&mut self, text: &str) -> Result<(), ChatError> {
-        if text.is_empty() {
-            return Err(ChatError::NoContent);
+    fn manage_cache_size(&self) -> Result<(), ChatError> {
+        let mut cache_files: Vec<_> = fs::read_dir(&self.cache_dir)?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| (entry.path(), entry.metadata().unwrap().modified().unwrap()))
+            .collect();
+
+        // Sort by last modified time (oldest first)
+        cache_files.sort_by_key(|&(_, time)| time);
+
+        let mut total_size = 0u64;
+        for (path, _) in &cache_files {
+            total_size += fs::metadata(path)?.len();
         }
 
-        // Split text into chunks with overlap
-        let overlap = self.chunk_size / 4; // 25% overlap
-        let words: Vec<&str> = text.split_whitespace().collect();
-        let mut current_section = 1;
-
-        let mut i = 0;
-        while i < words.len() {
-            let end = (i + self.chunk_size).min(words.len());
-            let chunk = words[i..end].join(" ");
-
-            self.chunks.push(TextChunk {
-                content: chunk,
-                section: current_section,
-                embedding: None,
-            });
-
-            i += self.chunk_size - overlap;
-            if i > words.len() {
-                break;
-            }
-
-            if i % 500 == 0 {
-                // New section every ~500 words
-                current_section += 1;
+        // Remove oldest files if total size exceeds limit
+        let max_size = MAX_CACHE_SIZE_MB * 1024 * 1024;
+        if total_size > max_size {
+            for (path, _) in cache_files {
+                if total_size <= max_size {
+                    break;
+                }
+                if let Ok(size) = fs::metadata(&path).map(|m| m.len()) {
+                    fs::remove_file(path)?;
+                    total_size -= size;
+                }
             }
         }
 
         Ok(())
     }
 
+    fn process_text_chunk(text: &str, chunk_size: usize, overlap: usize) -> Vec<TextChunk> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let mut chunks = Vec::new();
+        let mut current_section = 1;
+        let mut i = 0;
+
+        while i < words.len() {
+            let end = (i + chunk_size).min(words.len());
+            let chunk = words[i..end].join(" ");
+
+            chunks.push(TextChunk {
+                content: chunk,
+                section: current_section,
+                embedding: None,
+            });
+
+            i += chunk_size - overlap;
+            if i >= words.len() {
+                break;
+            }
+
+            if chunks.len() % 5 == 0 {
+                current_section += 1;
+            }
+        }
+
+        chunks
+    }
+
+    pub fn process_text(&mut self, text: &str) -> Result<(), ChatError> {
+        if text.is_empty() {
+            return Err(ChatError::NoContent);
+        }
+
+        let overlap = (self.chunk_size * OVERLAP_PERCENTAGE) / 100;
+        self.chunks = Self::process_text_chunk(text, self.chunk_size, overlap);
+        Ok(())
+    }
+
     pub async fn generate_embeddings(&mut self) -> Result<(), ChatError> {
-        let mut updated = false;
-        for chunk in &mut self.chunks {
-            // Skip if embedding already exists
-            if chunk.embedding.is_some() {
+        let pb = ProgressBar::new(self.chunks.len() as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} chunks ({eta})")
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+
+        let chunks = Arc::new(Mutex::new(self.chunks.clone()));
+        let mut handles = Vec::new();
+        let semaphore = self.semaphore.clone();
+
+        for i in 0..self.chunks.len() {
+            if self.chunks[i].embedding.is_some() {
+                pb.inc(1);
                 continue;
             }
 
-            let request =
-                EmbedContentRequest::new(&chunk.content, Some(TaskType::RetrievalDocument), None);
-            let response = self.model.embed_content(&self.model_name, request).await?;
-            chunk.embedding = Some(response.embedding.values);
-            updated = true;
+            let chunks = Arc::clone(&chunks);
+            let permit = semaphore.clone().acquire_owned().await.unwrap();
+            let model = self.model.clone();
+            let model_name = self.model_name.clone();
+            let pb = pb.clone();
+
+            let handle = tokio::spawn(async move {
+                let chunk = {
+                    let chunks = chunks.lock().unwrap();
+                    chunks[i].content.clone()
+                };
+
+                let request =
+                    EmbedContentRequest::new(&chunk, Some(TaskType::RetrievalDocument), None);
+                let result = model.embed_content(&model_name, request).await;
+
+                if let Ok(response) = result {
+                    let mut chunks = chunks.lock().unwrap();
+                    chunks[i].embedding = Some(response.embedding.values);
+                }
+
+                pb.inc(1);
+                drop(permit);
+            });
+
+            handles.push(handle);
         }
 
-        // Update cache if any new embeddings were generated
-        if updated {
-            if let Some(path) = self.current_pdf_path.as_ref() {
-                self.save_cache(path, "")?;
-            }
+        // Wait for all embeddings to complete
+        for handle in handles {
+            handle
+                .await
+                .map_err(|e| ChatError::EmbeddingGeneration(e.to_string()))?;
+        }
+
+        pb.finish_with_message("Embeddings generated");
+
+        // Update chunks with the generated embeddings
+        self.chunks = Arc::try_unwrap(chunks).unwrap().into_inner().unwrap();
+
+        // Update cache if needed
+        if let Some(path) = self.current_pdf_path.as_ref() {
+            self.save_cache(path, "")?;
         }
 
         Ok(())
     }
 
     pub fn process_pdf(&mut self, path: &str) -> Result<(), ChatError> {
-        // Store the PDF path for later use
+        self.manage_cache_size()?;
         self.current_pdf_path = Some(path.to_string());
 
         // Try to load from cache first
@@ -261,15 +350,13 @@ impl DocumentChatManager {
             return Ok(());
         }
 
-        // If not in cache, process the PDF
+        // Process the PDF in chunks
         let text = extract_text(path)?;
         if text.is_empty() {
             return Err(ChatError::NoContent);
         }
 
         self.process_text(&text)?;
-
-        // Save to cache
         self.save_cache(path, &text)?;
 
         Ok(())
@@ -284,9 +371,10 @@ impl DocumentChatManager {
         let response = self.model.embed_content(&self.model_name, request).await?;
         let query_embedding = response.embedding.values;
 
-        let mut chunks_with_scores: Vec<(&TextChunk, f32)> = self
+        // Use rayon for parallel processing of similarity calculations
+        let chunks_with_scores: Vec<_> = self
             .chunks
-            .iter()
+            .par_iter()
             .filter_map(|chunk| {
                 chunk.embedding.as_ref().map(|emb| {
                     let similarity = calculate_similarity(&query_embedding, emb);
@@ -295,7 +383,10 @@ impl DocumentChatManager {
             })
             .collect();
 
+        // Sort results (must be done sequentially)
+        let mut chunks_with_scores = chunks_with_scores;
         chunks_with_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
         Ok(chunks_with_scores
             .into_iter()
             .take(limit)
