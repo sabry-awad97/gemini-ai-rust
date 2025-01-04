@@ -435,6 +435,64 @@ impl FileChatManager {
         Ok(())
     }
 
+    pub async fn delete_all_files(&mut self) -> Result<(), ChatError> {
+        println!(
+            "{}",
+            "🗑️  Fetching files to delete...".bright_yellow().bold()
+        );
+        let pb = PrettyPrinter::print_thinking();
+
+        match self.file_manager.list_files().await {
+            Ok(files) => {
+                if files.is_empty() {
+                    pb.finish_and_clear();
+                    println!("{}", "No files to delete".bright_yellow());
+                    return Ok(());
+                }
+
+                pb.set_message("Deleting files...");
+                let total = files.len();
+                let mut deleted = 0;
+
+                for file in files {
+                    match self.file_manager.delete_file(&file.name).await {
+                        Ok(_) => {
+                            deleted += 1;
+                            pb.set_message(match deleted {
+                                1 => "Deleted 1 file...",
+                                n => {
+                                    if n == total {
+                                        "All files deleted!"
+                                    } else {
+                                        "Deleting files..."
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            println!("{} Failed to delete {}: {}", "⚠️".yellow(), file.name, e);
+                        }
+                    }
+                }
+
+                pb.finish_and_clear();
+                println!(
+                    "{} Deleted {} files",
+                    "✨".bright_green(),
+                    deleted.to_string().bright_green()
+                );
+
+                // Clear current file info since files are deleted
+                self.current_file_info = None;
+                Ok(())
+            }
+            Err(e) => {
+                pb.finish_and_clear();
+                Err(ChatError::FileManagement(e))
+            }
+        }
+    }
+
     pub fn get_file_info(&self) -> Option<FileInfo> {
         if let (Some(path), Some(content)) = (&self.current_file, &self.file_content) {
             Some(FileInfo {
@@ -515,6 +573,7 @@ Available Commands:
 /load     - Load a new file
 /info     - Show current file information
 /list     - List all uploaded files
+/delete   - Delete all uploaded files
 /clear    - Clear chat history
 /exit     - Exit the program
 "#
@@ -648,6 +707,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             "/list" => {
                 if let Err(e) = chat_manager.list_uploaded_files().await {
+                    PrettyPrinter::print_error(&e);
+                }
+            }
+            "/delete" => {
+                if let Err(e) = chat_manager.delete_all_files().await {
                     PrettyPrinter::print_error(&e);
                 }
             }
