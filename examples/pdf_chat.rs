@@ -1,6 +1,5 @@
 use colored::*;
 use dotenv::dotenv;
-use futures::StreamExt;
 use gemini_ai_rust::{
     client::GenerativeModel,
     error::GoogleGenerativeAIError,
@@ -434,6 +433,98 @@ impl DocumentChatManager {
 
         Ok(answer)
     }
+
+    pub fn get_stats(&self) -> Result<DocumentStats, ChatError> {
+        let file_size = if let Some(path) = &self.current_pdf_path {
+            fs::metadata(path)?.len()
+        } else {
+            0
+        };
+
+        let total_words = self
+            .chunks
+            .iter()
+            .map(|chunk| chunk.content.split_whitespace().count())
+            .sum();
+
+        Ok(DocumentStats {
+            total_words,
+            total_sections: self.chunks.last().map(|c| c.section).unwrap_or(0),
+            total_chunks: self.chunks.len(),
+            processed_date: chrono::Utc::now(),
+            file_size,
+        })
+    }
+
+    pub fn list_sections(&self) -> Vec<String> {
+        let mut sections = Vec::new();
+        let mut current_section = 0;
+        let mut current_content = String::new();
+
+        for chunk in &self.chunks {
+            if chunk.section != current_section {
+                if !current_content.is_empty() {
+                    let preview = if current_content.len() > 100 {
+                        format!("{}...", &current_content[..100])
+                    } else {
+                        current_content.clone()
+                    };
+                    sections.push(format!("Section {}: {}", current_section, preview));
+                }
+                current_section = chunk.section;
+                current_content = chunk.content.clone();
+            } else {
+                current_content.push_str(&chunk.content);
+            }
+        }
+
+        sections
+    }
+
+    pub async fn generate_summary(&self) -> Result<String, ChatError> {
+        let sections = self.list_sections();
+        let context = sections.join("\n\n");
+
+        let prompt = format!(
+            "Please provide a concise summary of this document. Focus on the main topics and key points.\n\nDocument content:\n{}",
+            context
+        );
+
+        let response = self.model.send_message(&prompt).await?;
+        Ok(response.text())
+    }
+
+    pub fn export_chat(&self, filename: &str) -> Result<(), ChatError> {
+        if let Some(chat_session) = &self.chat_session {
+            let export = ChatExport {
+                document_name: self.current_pdf_path.clone().unwrap_or_default(),
+                chat_history: chat_session.history.clone(),
+                export_date: chrono::Utc::now(),
+                document_stats: self.get_stats()?,
+            };
+
+            let file = File::create(filename)?;
+            serde_json::to_writer_pretty(file, &export)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentStats {
+    total_words: usize,
+    total_sections: usize,
+    total_chunks: usize,
+    processed_date: chrono::DateTime<chrono::Utc>,
+    file_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatExport {
+    document_name: String,
+    chat_history: Vec<Message>,
+    export_date: chrono::DateTime<chrono::Utc>,
+    document_stats: DocumentStats,
 }
 
 fn calculate_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -443,18 +534,90 @@ fn calculate_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot_product / (norm_a * norm_b)
 }
 
+const BANNER: &str = r#"
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                     🤖 PDF Chat Assistant Pro v1.0                         ║
+║                     Powered by Gemini AI & Rust                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+"#;
+
+const HELP_TEXT: &str = r#"
+Available Commands:
+  /help     - Show this help message
+  /clear    - Clear chat history
+  /stats    - Show document statistics
+  /sections - List document sections
+  /export   - Export chat history to file
+  /summary  - Generate document summary
+  /exit     - Exit the application
+"#;
+
 pub struct PrettyPrinter;
 
 impl PrettyPrinter {
+    pub fn print_banner() {
+        println!("{}", BANNER.bright_cyan());
+    }
+
+    pub fn print_help() {
+        println!("{}", HELP_TEXT.bright_yellow());
+    }
+
+    pub fn print_stats(stats: &DocumentStats) {
+        println!("\n{}", "📊 Document Statistics".bright_cyan().bold());
+        println!("{}", "═".repeat(50).bright_black());
+        println!(
+            "📝 Total Words: {}",
+            stats.total_words.to_string().bright_green()
+        );
+        println!(
+            "📑 Sections: {}",
+            stats.total_sections.to_string().bright_green()
+        );
+        println!(
+            "🧩 Chunks: {}",
+            stats.total_chunks.to_string().bright_green()
+        );
+        println!(
+            "📦 File Size: {} MB",
+            (stats.file_size as f64 / 1_048_576.0)
+                .round()
+                .to_string()
+                .bright_green()
+        );
+        println!(
+            "🕒 Processed: {}",
+            stats
+                .processed_date
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+                .bright_green()
+        );
+    }
+
+    pub fn print_sections(sections: &[String]) {
+        println!("\n{}", "📑 Document Sections".bright_cyan().bold());
+        println!("{}", "═".repeat(50).bright_black());
+        for section in sections {
+            println!("{}", section.bright_green());
+        }
+    }
+
     pub fn print_chat_message(role: &str, message: &str) {
-        let prefix = match role {
-            "user" => "You:".blue().bold(),
-            "assistant" => "Assistant:".green().bold(),
-            _ => "System:".yellow().bold(),
+        let (prefix, color) = match role {
+            "user" => ("You:", "blue"),
+            "assistant" => ("Assistant:", "green"),
+            "system" => ("System:", "yellow"),
+            _ => ("Unknown:", "red"),
         };
 
         println!("\n{}", "─".repeat(100).bright_black());
-        println!("{} {}", prefix, message);
+        match color {
+            "blue" => println!("{} {}", prefix.blue().bold(), message),
+            "green" => println!("{} {}", prefix.green().bold(), message),
+            "yellow" => println!("{} {}", prefix.yellow().bold(), message),
+            _ => println!("{} {}", prefix.red().bold(), message),
+        }
         println!("{}", "─".repeat(100).bright_black());
     }
 
@@ -465,22 +628,41 @@ impl PrettyPrinter {
     pub fn print_error(error: &dyn Error) {
         eprintln!("\n{} {}", "Error:".red().bold(), error.to_string().red());
     }
+
+    pub fn print_thinking() -> ProgressBar {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.green} {msg}")
+                .unwrap()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
+        );
+        pb.set_message("Thinking...");
+        pb
+    }
+
+    pub fn typing_effect(text: &str) {
+        print!("{} ", "Assistant:".green().bold());
+        for char in text.chars() {
+            print!("{}", char);
+            std::io::stdout().flush().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        println!("\n");
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
 
-    println!(
-        "{}",
-        "🤖 Welcome to PDF Chat Assistant".bright_cyan().bold()
-    );
-    println!("{}", "═".repeat(50).bright_black());
+    PrettyPrinter::print_banner();
+    PrettyPrinter::print_help();
 
     // Get PDF path from user
     println!(
         "\n{}",
-        "Please enter the path to your PDF file:".bright_yellow()
+        "📂 Please enter the path to your PDF file:".bright_yellow()
     );
     let mut pdf_path = String::new();
     std::io::stdin().read_line(&mut pdf_path)?;
@@ -528,69 +710,75 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!(
         "\n{}",
-        "🚀 Ready to chat! Type 'exit' to quit.".bright_green()
+        "🚀 Ready to chat! Type /help for available commands.".bright_green()
     );
     println!("{}", "═".repeat(50).bright_black());
 
     // Interactive chat loop
     loop {
-        // Print prompt
         print!("\n{} ", "You:".blue().bold());
         std::io::stdout().flush()?;
 
-        // Get user input
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         let input = input.trim();
 
-        // Check for exit command
-        if input.eq_ignore_ascii_case("exit") {
-            println!("\n{}", "👋 Goodbye!".bright_yellow());
-            break;
-        }
-
-        // Process empty input
-        if input.is_empty() {
-            println!("{}", "❗ Please enter a question".bright_yellow());
-            continue;
-        }
-
-        // Show thinking animation
-        let thinking_handle = tokio::spawn(async move {
-            let thinking_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-            let mut i = 0;
-            loop {
-                print!(
-                    "\r{} Thinking... {}",
-                    "🤔".bright_blue(),
-                    thinking_frames[i].bright_blue()
-                );
-                std::io::stdout().flush().unwrap();
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                i = (i + 1) % thinking_frames.len();
+        match input {
+            "/help" => PrettyPrinter::print_help(),
+            "/clear" => {
+                doc_manager.chat_session = Some(ChatSession::new(10));
+                PrettyPrinter::print_success("Chat history cleared");
             }
-        });
-
-        // Get response
-        match doc_manager.chat(input).await {
-            Ok(response) => {
-                // Stop thinking animation
-                thinking_handle.abort();
-                print!("\r{}", " ".repeat(50)); // Clear thinking animation
-                println!("\r");
-
-                // Print response with a typing effect
-                print!("{} ", "Assistant:".green().bold());
-                for char in response.chars() {
-                    print!("{}", char);
-                    std::io::stdout().flush()?;
-                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            "/stats" => {
+                if let Ok(stats) = doc_manager.get_stats() {
+                    PrettyPrinter::print_stats(&stats);
                 }
-                println!("\n");
             }
-            Err(e) => {
-                thinking_handle.abort();
-                PrettyPrinter::print_error(&e);
+            "/sections" => {
+                let sections = doc_manager.list_sections();
+                PrettyPrinter::print_sections(&sections);
+            }
+            "/export" => {
+                let filename = format!(
+                    "chat_export_{}.json",
+                    chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                );
+                if doc_manager.export_chat(&filename).is_ok() {
+                    PrettyPrinter::print_success(&format!("Chat exported to {}", filename));
+                }
+            }
+            "/summary" => {
+                let pb = PrettyPrinter::print_thinking();
+                match doc_manager.generate_summary().await {
+                    Ok(summary) => {
+                        pb.finish_and_clear();
+                        PrettyPrinter::print_chat_message("system", &summary);
+                    }
+                    Err(e) => PrettyPrinter::print_error(&e),
+                }
+            }
+            "/exit" => {
+                println!("\n{}", "👋 Goodbye!".bright_yellow());
+                break;
+            }
+            _ => {
+                if input.is_empty() {
+                    println!("{}", "❗ Please enter a question".bright_yellow());
+                    continue;
+                }
+
+                let pb = PrettyPrinter::print_thinking();
+
+                match doc_manager.chat(input).await {
+                    Ok(response) => {
+                        pb.finish_and_clear();
+                        PrettyPrinter::typing_effect(&response);
+                    }
+                    Err(e) => {
+                        pb.finish_and_clear();
+                        PrettyPrinter::print_error(&e);
+                    }
+                }
             }
         }
     }
