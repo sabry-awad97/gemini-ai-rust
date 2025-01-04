@@ -1,12 +1,15 @@
 use chrono::DateTime;
 use colored::*;
 use dialoguer::{theme::ColorfulTheme, FuzzySelect, Input};
-use dotenv::dotenv;
+use figment::{
+    providers::{Env, Format, Json},
+    Figment,
+};
 use futures::StreamExt;
 use gemini_ai_rust::{
     client::GenerativeModel,
     error::GoogleGenerativeAIError,
-    models::{Content, EmbedContentRequest, Part, Request, TaskType},
+    models::{Content, EmbedContentRequest, ModelParams, Part, Request, TaskType},
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use pdf_extract::extract_text_by_pages;
@@ -31,6 +34,42 @@ use tokio::sync::Semaphore;
 const MAX_CONCURRENT_REQUESTS: usize = 5;
 const OVERLAP_PERCENTAGE: usize = 25; // Percentage of overlap between chunks
 const MAX_CACHE_SIZE_MB: u64 = 200; // Maximum cache size in MB
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Config {
+    google_api_key: String,
+    generative_model: String,
+    embedding_model: String,
+}
+
+impl Config {
+    fn load() -> Result<Self, Box<dyn Error>> {
+        let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+        let config_dir = home_dir.join(".gemini-ai-rust");
+        std::fs::create_dir_all(&config_dir)?;
+
+        let config_path = config_dir.join("config.json");
+
+        // Create default config file if it doesn't exist
+        if !config_path.exists() {
+            std::fs::write(&config_path, r#"{ "google_api_key": "", "generative_model": "gemini-1.5-flash", "embedding_model": "embedding-001" }"#)?;
+        }
+
+        // Load config from multiple sources, with following precedence:
+        // 1. Environment variables (GEMINI_GOOGLE_API_KEY)
+        // 2. Config file (~/.gemini-ai-rust/config.json)
+        let config: Config = Figment::new()
+            .merge(Json::file(config_path))
+            .merge(Env::prefixed("GEMINI_"))
+            .extract()?;
+
+        if config.google_api_key.is_empty() {
+            return Err("API key not found. Please set it in ~/.gemini-ai-rust/config.json or GEMINI_GOOGLE_API_KEY environment variable".into());
+        }
+
+        Ok(config)
+    }
+}
 
 // Custom chat session implementation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -879,8 +918,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         std::process::exit(0);
     })?;
 
-    dotenv().ok();
-
     PrettyPrinter::print_banner();
     PrettyPrinter::print_help();
 
@@ -904,8 +941,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("\n{}", "🔄 Initializing...".bright_blue());
 
-    let model = GenerativeModel::from_env("gemini-1.5-pro")?;
-    let mut doc_manager = DocumentChatManager::new(model.clone(), "embedding-001", 200);
+    // Load configuration
+    let config = Config::load()?;
+
+    let model = GenerativeModel::new(
+        config.google_api_key.clone(),
+        ModelParams::builder().model(&config.generative_model).build(),
+    );
+    let mut doc_manager = DocumentChatManager::new(model.clone(), &config.embedding_model, 200);
     PrettyPrinter::print_success("Document manager initialized");
 
     println!("\n{}", "📄 Processing PDF...".bright_blue());
