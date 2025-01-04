@@ -5,8 +5,9 @@ use gemini_ai_rust::{
     error::GoogleGenerativeAIError,
     models::{EmbedContentRequest, TaskType},
 };
+use pdf_extract::extract_text;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use std::{error::Error, io::Write};
 use thiserror::Error;
 
 // Custom chat session implementation
@@ -73,6 +74,10 @@ pub enum ChatError {
     NoContent,
     #[error("API error: {0}")]
     ApiError(#[from] GoogleGenerativeAIError),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("PDF error: {0}")]
+    PdfError(#[from] pdf_extract::OutputError),
 }
 
 // Text chunk with metadata
@@ -216,6 +221,14 @@ impl DocumentChatManager {
 
         Ok(answer)
     }
+
+    pub fn process_pdf(&mut self, path: &str) -> Result<(), ChatError> {
+        let text = extract_text(path)?;
+        if text.is_empty() {
+            return Err(ChatError::NoContent);
+        }
+        self.process_text(&text)
+    }
 }
 
 fn calculate_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -252,53 +265,29 @@ impl PrettyPrinter {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
-    PrettyPrinter::print_success("Environment configuration loaded");
 
-    // Sample document content
-    let document_content = r#"
-        This is a sample document about Rust programming.
+    println!(
+        "{}",
+        "🤖 Welcome to PDF Chat Assistant".bright_cyan().bold()
+    );
+    println!("{}", "═".repeat(50).bright_black());
 
-        Rust is a systems programming language that runs blazingly fast, prevents segfaults,
-        and guarantees thread safety. Rust's rich type system and ownership model guarantee
-        memory-safety and thread-safety — enabling you to eliminate many classes of bugs at
-        compile-time.
+    // Get PDF path from user
+    println!(
+        "\n{}",
+        "Please enter the path to your PDF file:".bright_yellow()
+    );
+    let mut pdf_path = String::new();
+    std::io::stdin().read_line(&mut pdf_path)?;
+    let pdf_path = pdf_path.trim();
 
-        Key Features of Rust:
-        1. Zero-cost abstractions
-        2. Move semantics
-        3. Guaranteed memory safety
-        4. Threads without data races
-        5. Trait-based generics
-        6. Pattern matching
-        7. Type inference
-        8. Minimal runtime
-        9. Efficient C bindings
+    // Check if file exists
+    if !std::path::Path::new(pdf_path).exists() {
+        println!("{}", "❌ File not found!".bright_red());
+        return Ok(());
+    }
 
-        Rust is used in various domains:
-        - Systems programming
-        - WebAssembly
-        - Command line tools
-        - Network services
-        - Embedded systems
-        
-        The Rust compiler plays a gatekeeper role in ensuring memory safety.
-        It enforces strict rules about borrowing and ownership, which might seem
-        restrictive at first but help prevent common programming errors.
-
-        Memory Management in Rust:
-        Rust uses a unique ownership system to manage memory. Each value has an owner,
-        and there can only be one owner at a time. When the owner goes out of scope,
-        the value is dropped. This system ensures memory safety without garbage collection.
-
-        Error Handling:
-        Rust encourages explicit error handling through the Result type. This makes
-        error cases visible and ensures they are handled appropriately. The ? operator
-        makes working with Results ergonomic.
-
-        Concurrency:
-        Rust's ownership and type systems enable fearless concurrency. By enforcing strict
-        rules at compile time, Rust prevents data races and other concurrent programming pitfalls.
-    "#;
+    println!("\n{}", "🔄 Initializing...".bright_blue());
 
     let model_generation = "gemini-1.5-flash";
     let model_embedding = "embedding-001";
@@ -308,34 +297,97 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut doc_manager = DocumentChatManager::new(model, model_embedding, 200);
     PrettyPrinter::print_success("Document manager initialized");
 
-    // Process the document
-    doc_manager.process_text(document_content)?;
-    PrettyPrinter::print_success("Document processed successfully");
+    // Process the PDF
+    println!("\n{}", "📄 Processing PDF...".bright_blue());
+    match doc_manager.process_pdf(pdf_path) {
+        Ok(_) => PrettyPrinter::print_success("PDF processed successfully"),
+        Err(e) => {
+            PrettyPrinter::print_error(&e);
+            return Ok(());
+        }
+    }
 
     // Generate embeddings
-    println!("\nGenerating embeddings...");
-    doc_manager.generate_embeddings().await?;
-    PrettyPrinter::print_success("Embeddings generated successfully");
+    println!("\n{}", "🧠 Generating embeddings...".bright_blue());
+    match doc_manager.generate_embeddings().await {
+        Ok(_) => PrettyPrinter::print_success("Embeddings generated successfully"),
+        Err(e) => {
+            PrettyPrinter::print_error(&e);
+            return Ok(());
+        }
+    }
 
     // Start chat session
     doc_manager.start_chat_session();
     PrettyPrinter::print_success("Chat session started");
 
-    // Example chat interactions
-    let questions = vec![
-        "What are the key features of Rust?",
-        "How does Rust handle memory management?",
-        "Can you explain Rust's approach to concurrency?",
-        "What domains is Rust commonly used in?",
-    ];
+    println!(
+        "\n{}",
+        "🚀 Ready to chat! Type 'exit' to quit.".bright_green()
+    );
+    println!("{}", "═".repeat(50).bright_black());
 
-    println!("\n{}", "Chat Examples:".bright_green());
-    println!("{}", "═".repeat(50).bright_green());
+    // Interactive chat loop
+    loop {
+        // Print prompt
+        print!("\n{} ", "You:".blue().bold());
+        std::io::stdout().flush()?;
 
-    for question in questions {
-        PrettyPrinter::print_chat_message("user", question);
-        let response = doc_manager.chat(question).await?;
-        PrettyPrinter::print_chat_message("assistant", &response);
+        // Get user input
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        let input = input.trim();
+
+        // Check for exit command
+        if input.eq_ignore_ascii_case("exit") {
+            println!("\n{}", "👋 Goodbye!".bright_yellow());
+            break;
+        }
+
+        // Process empty input
+        if input.is_empty() {
+            println!("{}", "❗ Please enter a question".bright_yellow());
+            continue;
+        }
+
+        // Show thinking animation
+        let thinking_handle = tokio::spawn(async move {
+            let thinking_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let mut i = 0;
+            loop {
+                print!(
+                    "\r{} Thinking... {}",
+                    "🤔".bright_blue(),
+                    thinking_frames[i].bright_blue()
+                );
+                std::io::stdout().flush().unwrap();
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                i = (i + 1) % thinking_frames.len();
+            }
+        });
+
+        // Get response
+        match doc_manager.chat(input).await {
+            Ok(response) => {
+                // Stop thinking animation
+                thinking_handle.abort();
+                print!("\r{}", " ".repeat(50)); // Clear thinking animation
+                println!("\r");
+
+                // Print response with a typing effect
+                print!("{} ", "Assistant:".green().bold());
+                for char in response.chars() {
+                    print!("{}", char);
+                    std::io::stdout().flush()?;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                }
+                println!("\n");
+            }
+            Err(e) => {
+                thinking_handle.abort();
+                PrettyPrinter::print_error(&e);
+            }
+        }
     }
 
     Ok(())
