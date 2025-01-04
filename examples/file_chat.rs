@@ -367,8 +367,8 @@ impl FileChatManager {
 
         let mut parts = vec![Part::Text {
             text: format!(
-                "{}\nContext: I'm looking at a file of type {}. Here's my question: {}",
-                SYSTEM_PROMPT, mime_type, user_input
+                "Context: I'm looking at a file of type {}. Here's my question: {}",
+                mime_type, user_input
             ),
         }];
 
@@ -408,6 +408,7 @@ impl FileChatManager {
         }
 
         let request = Request::builder()
+            .system_instruction(Some(SYSTEM_PROMPT.into()))
             .contents(vec![Content { role: None, parts }])
             .build();
 
