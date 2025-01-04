@@ -5,7 +5,8 @@ use serde::Serialize;
 use tokio::sync::mpsc;
 
 use crate::models::{
-    EmbedContentRequest, EmbedContentResponse, ListModelsResponse, ModelInfo, ResponseStream,
+    BatchEmbedContentRequest, BatchEmbedContentResponse, EmbedContentRequest, EmbedContentResponse,
+    ListModelsResponse, ModelInfo, ResponseStream,
 };
 use crate::{
     error::GoogleGenerativeAIError,
@@ -356,5 +357,23 @@ impl GenerativeModel {
     ) -> Result<EmbedContentResponse, GoogleGenerativeAIError> {
         let url = self.build_url(model, RequestType::EmbedContent);
         self.send_request(&url, request.into()).await
+    }
+
+    /// Batch embed multiple contents in a single request
+    ///
+    /// # Arguments
+    /// * `model` - The model to use for embedding
+    /// * `requests` - A vector of embedding requests to process in batch
+    ///
+    /// # Returns
+    /// A result containing the batch embedding response or an error
+    pub async fn batch_embed_contents(
+        &self,
+        model: &str,
+        requests: Vec<EmbedContentRequest>,
+    ) -> Result<BatchEmbedContentResponse, GoogleGenerativeAIError> {
+        let url = self.build_url(model, RequestType::BatchEmbedContents);
+        let request = BatchEmbedContentRequest { requests };
+        self.send_request(&url, request).await
     }
 }

@@ -272,3 +272,10 @@ pub struct Embedding {
     /// Vector of floating point values representing the embedding
     pub values: Vec<f32>,
 }
+
+/// Response from a batch embedding request
+#[derive(Debug, Deserialize)]
+pub struct BatchEmbedContentResponse {
+    /// Vector of embeddings generated for each request
+    pub embeddings: Vec<Embedding>,
+}

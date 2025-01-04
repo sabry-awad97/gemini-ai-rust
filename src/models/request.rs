@@ -118,7 +118,7 @@ impl EmbedContentRequest {
                 }],
             },
             task_type,
-            title
+            title,
         }
     }
 }
@@ -137,4 +137,11 @@ pub enum TaskType {
     Classification,
     /// Specifies that the embeddings will be used for clustering.
     Clustering,
+}
+
+/// Request for batch embedding multiple contents
+#[derive(Debug, Serialize)]
+pub struct BatchEmbedContentRequest {
+    /// Vector of individual embedding requests to process in batch
+    pub requests: Vec<EmbedContentRequest>,
 }

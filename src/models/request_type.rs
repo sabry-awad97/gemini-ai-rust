@@ -11,6 +11,8 @@ pub enum RequestType {
     CountTokens,
     /// Embed content
     EmbedContent,
+    /// Batch embed contents
+    BatchEmbedContents,
 }
 
 impl Display for RequestType {
@@ -20,6 +22,7 @@ impl Display for RequestType {
             Self::StreamGenerateContent => write!(f, "streamGenerateContent"),
             Self::CountTokens => write!(f, "countTokens"),
             Self::EmbedContent => write!(f, "embedContent"),
+            Self::BatchEmbedContents => write!(f, "batchEmbedContents"),
         }
     }
 }

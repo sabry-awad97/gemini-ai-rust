@@ -3,7 +3,7 @@ use dotenv::dotenv;
 use gemini_ai_rust::{
     client::GenerativeModel,
     error::GoogleGenerativeAIError,
-    models::{EmbedContentRequest, TaskType},
+    models::{EmbedContentRequest, ModelInfo, TaskType},
 };
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -183,15 +183,92 @@ impl PrettyPrinter {
     }
 }
 
+/// Display detailed information for a model that supports embeddings
+fn display_model_info(model: &ModelInfo) {
+    println!("\n{}", "─".repeat(100).bright_black());
+    println!(
+        "{:<20} {}",
+        "Model Name:".blue().bold(),
+        model.name.bright_blue()
+    );
+    println!(
+        "{:<20} {}",
+        "Display Name:".cyan().bold(),
+        model.display_name.bright_cyan()
+    );
+    println!(
+        "{:<20} {}",
+        "Description:".yellow().bold(),
+        model.description.bright_yellow()
+    );
+    println!(
+        "{:<20} {}",
+        "Version:".magenta().bold(),
+        model.version.bright_magenta()
+    );
+    println!(
+        "{:<20} {}",
+        "Methods:".red().bold(),
+        model.supported_generation_methods.join(", ").bright_red()
+    );
+    println!("{}", "─".repeat(100).bright_black());
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenv().ok();
     PrettyPrinter::print_success("Environment configuration loaded");
 
-    // Initialize the embedding processor
+    // Initialize the model
     let model = GenerativeModel::from_env("embedding-001")?;
-    let processor = EmbeddingProcessor::new(model, "embedding-001");
     PrettyPrinter::print_success("Gemini client initialized successfully");
+
+    // List available embedding models
+    println!("\n{}", "Gemini Embedding Models".bright_green().bold());
+    println!("{}", "═".repeat(50).bright_green());
+    println!(
+        "{}",
+        "Discovering models with embedding capabilities"
+            .bright_black()
+            .italic()
+    );
+
+    match model.list_models().await {
+        Ok(models) => {
+            let embedding_models: Vec<_> = models
+                .models
+                .iter()
+                .filter(|m| {
+                    m.supported_generation_methods
+                        .contains(&"embedContent".to_string())
+                })
+                .collect();
+
+            if embedding_models.is_empty() {
+                println!(
+                    "{}",
+                    "No models supporting embedContent found.".yellow().italic()
+                );
+            } else {
+                for model_info in &embedding_models {
+                    display_model_info(model_info);
+                }
+                println!(
+                    "\n{} {}",
+                    "Total embedding models found:".bright_blue(),
+                    embedding_models.len().to_string().bright_green().bold()
+                );
+            }
+        }
+        Err(e) => {
+            PrettyPrinter::print_error(&e);
+            return Err(e.into());
+        }
+    }
+
+    // Initialize the embedding processor
+    let processor = EmbeddingProcessor::new(model, "embedding-001");
+    PrettyPrinter::print_success("Embedding processor initialized");
 
     // Create sample documents using the builder pattern
     let mut documents = vec![
