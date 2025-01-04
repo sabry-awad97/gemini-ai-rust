@@ -143,7 +143,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     let response = model
-        .embed_content(model_name, EmbedContentRequest::new("Hello world", None))
+        .embed_content(
+            model_name,
+            EmbedContentRequest::new("Hello world", None, None),
+        )
         .await?;
 
     display_embedding_result("Hello world", &response.embedding.values);

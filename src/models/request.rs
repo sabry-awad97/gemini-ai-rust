@@ -94,6 +94,8 @@ pub struct EmbedContentRequest {
     pub content: Content,
     /// Optional task type to optimize the embedding for
     pub task_type: Option<TaskType>,
+    /// Optional title for the request
+    pub title: Option<String>,
 }
 
 impl EmbedContentRequest {
@@ -107,7 +109,7 @@ impl EmbedContentRequest {
     /// # Returns
     ///
     /// A new EmbedContentRequest
-    pub fn new(prompt: &str, task_type: Option<TaskType>) -> Self {
+    pub fn new(prompt: &str, task_type: Option<TaskType>, title: Option<String>) -> Self {
         Self {
             content: Content {
                 role: None,
@@ -116,6 +118,7 @@ impl EmbedContentRequest {
                 }],
             },
             task_type,
+            title
         }
     }
 }
@@ -124,14 +127,14 @@ impl EmbedContentRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TaskType {
-    /// Optimize embedding for retrieval queries
+    /// Specifies the given text is a query in a search/retrieval setting.
     RetrievalQuery,
-    /// Optimize embedding for retrieval documents
+    /// Specifies the given text is a document in a search/retrieval setting.
     RetrievalDocument,
-    /// Optimize embedding for semantic similarity tasks
+    /// Specifies the given text will be used for Semantic Textual Similarity (STS).
     SemanticSimilarity,
-    /// Optimize embedding for classification tasks
+    /// Specifies that the embeddings will be used for classification.
     Classification,
-    /// Optimize embedding for clustering tasks
+    /// Specifies that the embeddings will be used for clustering.
     Clustering,
 }
