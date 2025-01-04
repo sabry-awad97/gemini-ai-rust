@@ -349,11 +349,8 @@ impl FileChatManager {
 
         // Add file content based on whether we have a Google AI file or local file
         if let Some(file_name) = &self.current_file_info {
-            // Use Google AI file reference
-            parts.push(Part::file_data(
-                mime_type.clone(),
-                format!("files/{}", file_name),
-            ));
+            // Use Google AI file reference - don't add "files/" prefix
+            parts.push(Part::file_data(mime_type.clone(), file_name.clone()));
         } else {
             // Fallback to direct content
             if mime_type.starts_with("text/") {
@@ -377,8 +374,8 @@ impl FileChatManager {
         match self.model.generate_response(request).await {
             Ok(response) => {
                 let response_text = response.text();
-                self.chat_session.add_message("model", &response_text);
-                PrettyPrinter::print_chat_message("Model", &response_text);
+                self.chat_session.add_message("assistant", &response_text);
+                PrettyPrinter::print_chat_message("Assistant", &response_text);
                 Ok(())
             }
             Err(e) => Err(ChatError::ApiError(e)),
@@ -489,7 +486,7 @@ Available Commands:
     pub fn print_chat_message(role: &str, message: &str) {
         let prefix = match role.to_lowercase().as_str() {
             "user" => "👤 You:".blue().bold(),
-            "model" => "🤖 Model:".green().bold(),
+            "assistant" => "🤖 Assistant:".green().bold(),
             _ => role.white().bold(),
         };
 
