@@ -1,4 +1,6 @@
+use chrono::DateTime;
 use colored::*;
+use dialoguer::{theme::ColorfulTheme, FuzzySelect, Input};
 use dotenv::dotenv;
 use futures::StreamExt;
 use gemini_ai_rust::{
@@ -17,16 +19,18 @@ use std::{
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::SystemTime,
 };
 use thiserror::Error;
 use tokio::sync::Semaphore;
 
 const MAX_CONCURRENT_REQUESTS: usize = 5;
-const CHUNK_SIZE: usize = 1000; // Words per chunk
 const OVERLAP_PERCENTAGE: usize = 25; // Percentage of overlap between chunks
-const MAX_CACHE_SIZE_MB: u64 = 100; // Maximum cache size in MB
+const MAX_CACHE_SIZE_MB: u64 = 200; // Maximum cache size in MB
 
 // Custom chat session implementation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +123,112 @@ struct DocumentCache {
     last_modified: chrono::DateTime<chrono::Utc>,
 }
 
+// File structure
+#[derive(Debug, Clone)]
+pub struct EntityFile {
+    pub index: usize,
+    pub path: PathBuf,
+    pub name: String,
+    pub size: u64,
+    pub last_modified: SystemTime,
+}
+
+impl EntityFile {
+    pub fn size_formatted(&self) -> String {
+        const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+        let mut size = self.size as f64;
+        let mut unit_index = 0;
+
+        while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+            size /= 1024.0;
+            unit_index += 1;
+        }
+
+        format!("{:.2} {}", size, UNITS[unit_index])
+    }
+
+    fn truncate_name(&self, max_length: usize) -> String {
+        if self.name.len() > max_length {
+            format!("{}…", &self.name[..max_length - 1])
+        } else {
+            self.name.clone()
+        }
+    }
+
+    fn format_date(&self) -> String {
+        self.last_modified
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .ok()
+            .and_then(|d| DateTime::from_timestamp(d.as_secs() as i64, 0))
+            .map_or_else(
+                || "Unknown".to_string(),
+                |dt| dt.format("%Y-%m-%d %H:%M").to_string(),
+            )
+    }
+}
+
+impl std::fmt::Display for EntityFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{index:>3} │ {name:<35} │ {size:>10} │ {date}",
+            index = self.index.to_string().bright_yellow(),
+            name = self.truncate_name(35).bright_green(),
+            size = self.size_formatted().bright_blue(),
+            date = self.format_date().bright_black(),
+        )
+    }
+}
+
+impl AsRef<Path> for EntityFile {
+    fn as_ref(&self) -> &Path {
+        self.path.as_ref()
+    }
+}
+
+/// Get a list of files from a directory
+///
+/// # Arguments
+/// * `dir` - The directory to search in
+/// * `extension` - The file extension to filter by
+/// * `min_size` - Optional minimum file size in bytes
+///
+/// # Returns
+/// * `Result<Vec<EntityFile>, std::io::Error>` - A list of EntityFile structs
+pub async fn get_files(
+    dir: impl AsRef<std::path::Path>,
+    extension: &str,
+    min_size: Option<u64>,
+) -> Result<Vec<EntityFile>, std::io::Error> {
+    let mut matching_files = Vec::new();
+    let mut entries = tokio::fs::read_dir(dir).await?;
+
+    let mut index = 0;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.is_file()
+            && path
+                .extension()
+                .map_or(false, |ext| ext.eq_ignore_ascii_case(extension))
+        {
+            let metadata = entry.metadata().await?;
+            let size = metadata.len();
+            if min_size.map_or(true, |min| size >= min) {
+                index += 1;
+                matching_files.push(EntityFile {
+                    index,
+                    name: path.file_name().unwrap().to_string_lossy().into_owned(),
+                    path,
+                    size,
+                    last_modified: metadata.modified().unwrap(),
+                });
+            }
+        }
+    }
+
+    Ok(matching_files)
+}
+
 // Document chat manager
 pub struct DocumentChatManager {
     model: GenerativeModel,
@@ -127,13 +237,14 @@ pub struct DocumentChatManager {
     chat_session: Option<ChatSession>,
     chunk_size: usize,
     cache_dir: PathBuf,
-    current_pdf_path: Option<String>,
+    current_pdf_path: Option<PathBuf>,
     semaphore: Arc<Semaphore>,
 }
 
 impl DocumentChatManager {
     pub fn new(model: GenerativeModel, model_name: impl Into<String>, chunk_size: usize) -> Self {
-        let cache_dir = PathBuf::from(".cache/pdf_chat");
+        let home_dir = dirs::home_dir().expect("Failed to get home directory");
+        let cache_dir = home_dir.join(".cache").join("pdf_chat");
         fs::create_dir_all(&cache_dir).unwrap_or_else(|_| {
             eprintln!("Warning: Failed to create cache directory");
         });
@@ -150,9 +261,8 @@ impl DocumentChatManager {
         }
     }
 
-    fn get_cache_path(&self, pdf_path: &str) -> PathBuf {
+    fn get_cache_path(&self, pdf_path: &Path) -> PathBuf {
         // Create a unique cache file name based on the PDF path and last modified time
-        let pdf_path = Path::new(pdf_path);
         let last_modified = fs::metadata(pdf_path)
             .and_then(|m| m.modified())
             .unwrap_or_else(|_| std::time::SystemTime::now());
@@ -165,7 +275,7 @@ impl DocumentChatManager {
         self.cache_dir.join(format!("{}.json", &hash[..16]))
     }
 
-    fn load_cache(&self, pdf_path: &str) -> Result<Option<DocumentCache>, ChatError> {
+    fn load_cache(&self, pdf_path: &Path) -> Result<Option<DocumentCache>, ChatError> {
         let cache_path = self.get_cache_path(pdf_path);
         if !cache_path.exists() {
             return Ok(None);
@@ -192,14 +302,14 @@ impl DocumentChatManager {
         Ok(Some(cache))
     }
 
-    fn save_cache(&self, pdf_path: &str, text: &str) -> Result<(), ChatError> {
+    fn save_cache(&self, pdf_path: impl AsRef<Path>, text: &str) -> Result<(), ChatError> {
         let cache = DocumentCache {
             text: text.to_string(),
             chunks: self.chunks.clone(),
             last_modified: chrono::Utc::now(),
         };
 
-        let cache_path = self.get_cache_path(pdf_path);
+        let cache_path = self.get_cache_path(pdf_path.as_ref());
         let file = File::create(cache_path)?;
         serde_json::to_writer_pretty(file, &cache)?;
         Ok(())
@@ -343,7 +453,7 @@ impl DocumentChatManager {
         Ok(())
     }
 
-    fn extract_text_from_pages(pdf_path: &str) -> Result<Vec<PageInfo>, ChatError> {
+    fn extract_text_from_pages(pdf_path: &Path) -> Result<Vec<PageInfo>, ChatError> {
         extract_text_by_pages(pdf_path)?
             .into_iter()
             .enumerate()
@@ -357,18 +467,18 @@ impl DocumentChatManager {
             .collect()
     }
 
-    pub fn process_pdf(&mut self, path: &str) -> Result<(), ChatError> {
+    pub fn process_pdf(&mut self, path: impl AsRef<Path>) -> Result<(), ChatError> {
         self.manage_cache_size()?;
-        self.current_pdf_path = Some(path.to_string());
+        self.current_pdf_path = Some(path.as_ref().to_path_buf());
 
         // Try to load from cache first
-        if let Some(cache) = self.load_cache(path)? {
+        if let Some(cache) = self.load_cache(path.as_ref())? {
             self.chunks = cache.chunks;
             return Ok(());
         }
 
         // Extract text by pages
-        let pages = Self::extract_text_from_pages(path)?;
+        let pages = Self::extract_text_from_pages(path.as_ref())?;
 
         // Process each page
         let mut current_section = 1;
@@ -468,7 +578,14 @@ impl DocumentChatManager {
         );
 
         let request = Request::builder()
-            .system_instruction(Some("You are a helpful assistant analyzing a document. Please provide a clear and concise answer based on the context. When referring to content, mention the page number where it appears. Respond using Markdown.".into()))
+            .system_instruction(Some(
+                "You are a helpful assistant analyzing a document. \
+            Please provide a clear and concise answer based on the context. \
+            When referring to content, mention the page number where it appears. \
+            Carefully heed the user's instructions. \
+            Respond using Markdown."
+                    .into(),
+            ))
             .contents(vec![Content {
                 role: None,
                 parts: vec![Part::Text { text: prompt }],
@@ -557,18 +674,35 @@ impl DocumentChatManager {
         let context = sections.join("\n\n");
 
         let prompt = format!(
-            "Please provide a concise summary of this document. Focus on the main topics and key points.Carefully heed the user's instructions.\nRespond using Markdown.\n\nDocument content:\n{}",
+            "Please provide a concise summary of this document. Focus on the main topics and key points.\n\nDocument content:\n{}",
             context
         );
 
-        let response = self.model.send_message(&prompt).await?;
+        let request = Request::builder()
+            .system_instruction(Some(
+                "You are a helpful assistant analyzing a document. \
+            Carefully heed the user's instructions. \
+            Respond using Markdown."
+                    .into(),
+            ))
+            .contents(vec![Content {
+                role: None,
+                parts: vec![Part::Text { text: prompt }],
+            }])
+            .build();
+
+        let response = self.model.generate_response(request).await?;
         Ok(response.text())
     }
 
     pub fn export_chat(&self, filename: &str) -> Result<(), ChatError> {
         if let Some(chat_session) = &self.chat_session {
             let export = ChatExport {
-                document_name: self.current_pdf_path.clone().unwrap_or_default(),
+                document_name: self
+                    .current_pdf_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default(),
                 chat_history: chat_session.history.clone(),
                 export_date: chrono::Utc::now(),
                 document_stats: self.get_stats()?,
@@ -732,37 +866,41 @@ impl PrettyPrinter {
         pb.set_message("Thinking...");
         pb
     }
-
-    pub fn typing_effect(text: &str) {
-        print!("{} ", "Assistant:".green().bold());
-        for char in text.chars() {
-            print!("{}", char);
-            std::io::stdout().flush().unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(10));
-        }
-        println!("\n");
-    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    // Set up Ctrl+C handler
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+        println!("\n\n{}", "👋 Gracefully shutting down...".bright_yellow());
+        std::process::exit(0);
+    })?;
+
     dotenv().ok();
 
     PrettyPrinter::print_banner();
     PrettyPrinter::print_help();
 
-    println!(
-        "\n{}",
-        "📂 Please enter the path to your PDF file:".bright_yellow()
-    );
-    let mut pdf_path = String::new();
-    std::io::stdin().read_line(&mut pdf_path)?;
-    let pdf_path = pdf_path.trim();
+    let pdf_files = get_files(std::env::current_dir()?, "pdf", None).await?;
 
-    if !std::path::Path::new(pdf_path).exists() {
-        println!("{}", "❌ File not found!".bright_red());
+    if pdf_files.is_empty() {
+        println!(
+            "{}",
+            "❌ No PDF files found in the current directory!".bright_red()
+        );
         return Ok(());
     }
+
+    // Use dialoguer to select a PDF file
+    let selection = FuzzySelect::new()
+        .with_prompt("Select a PDF file")
+        .items(&pdf_files)
+        .interact()?;
+
+    let file = &pdf_files[selection];
 
     println!("\n{}", "🔄 Initializing...".bright_blue());
 
@@ -771,7 +909,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     PrettyPrinter::print_success("Document manager initialized");
 
     println!("\n{}", "📄 Processing PDF...".bright_blue());
-    match doc_manager.process_pdf(pdf_path) {
+    match doc_manager.process_pdf(&file.path) {
         Ok(_) => PrettyPrinter::print_success("PDF processed successfully"),
         Err(e) => {
             PrettyPrinter::print_error(&e);
@@ -798,11 +936,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("{}", "═".repeat(50).bright_black());
 
     loop {
+        if !running.load(Ordering::SeqCst) {
+            break;
+        }
+
         print!("\n{} ", "You:".blue().bold());
         std::io::stdout().flush()?;
 
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
+        // Use dialoguer for user input
+        let input: String = Input::with_theme(&ColorfulTheme::default())
+            .allow_empty(true) // Allow empty input
+            .interact_text()?;
+
         let input = input.trim();
 
         match input {
