@@ -8,7 +8,7 @@ use figment::{
 use gemini_ai_rust::{
     client::GenerativeModel,
     error::GoogleGenerativeAIError,
-    file::{FileError, FileState, GoogleAIFileManager},
+    file::{FileError, FileInfo as GeminiFileInfo, FileState, GoogleAIFileManager},
     models::{Content, InlineData, ModelParams, Part, Request},
 };
 use indicatif::{ProgressBar, ProgressStyle};
@@ -144,6 +144,7 @@ struct FileCache {
     mime_type: String,
     content: Vec<u8>,
     last_accessed: chrono::DateTime<chrono::Utc>,
+    google_file_name: Option<String>, // Store Google AI file name
 }
 
 #[derive(Debug)]
@@ -279,25 +280,30 @@ impl FileChatManager {
             self.file_content = Some(cache.content);
             self.mime_type = Some(cache.mime_type);
 
-            println!("{}", "📦 Loaded from cache".bright_green().bold());
-        } else {
-            // If not in cache, save to cache
-            let cache = FileCache {
-                hash,
-                mime_type: mime_type.clone(),
-                content: content.clone(),
-                last_accessed: chrono::Utc::now(),
-            };
-            self.save_to_cache(&cache)?;
+            // If we have a cached Google AI file, verify it still exists
+            if let Some(google_file_name) = &cache.google_file_name {
+                println!("{}", "🔍 Verifying cached file...".bright_yellow().bold());
+                let pb = PrettyPrinter::print_thinking();
 
-            self.current_file = Some(path.to_path_buf());
-            self.file_content = Some(content);
-            self.mime_type = Some(mime_type.clone());
-
-            println!("{}", "💾 File cached for future use".bright_green().bold());
+                // List files and check if our cached file exists
+                match self.file_manager.list_files().await {
+                    Ok(files) => {
+                        if files.iter().any(|f| f.name == *google_file_name) {
+                            self.current_file_info = Some(google_file_name.clone());
+                            pb.finish_and_clear();
+                            println!("{}", "📦 Using cached file reference".bright_green().bold());
+                            return Ok(());
+                        }
+                    }
+                    Err(_e) => {
+                        pb.finish_and_clear();
+                        println!("{}", "⚠️  Could not verify cached file".yellow().bold());
+                    }
+                }
+            }
         }
 
-        // Upload to Google AI
+        // If we reach here, we need to upload the file
         let file_name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
             ChatError::IoError(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -315,16 +321,31 @@ impl FileChatManager {
             .await?;
 
         // Wait for processing if needed
-        if matches!(file_info.state, FileState::Processing) {
+        let final_file_name = if matches!(file_info.state, FileState::Processing) {
             pb.set_message("Processing file...");
             let processed_file = self
                 .file_manager
                 .wait_for_file_processing(&file_info.name, 10, 1000)
                 .await?;
-            self.current_file_info = Some(processed_file.name);
+            processed_file.name
         } else {
-            self.current_file_info = Some(file_info.name);
-        }
+            file_info.name
+        };
+
+        // Update cache with Google AI file information
+        let cache = FileCache {
+            hash,
+            mime_type: mime_type.clone(),
+            content: content.clone(),
+            last_accessed: chrono::Utc::now(),
+            google_file_name: Some(final_file_name.clone()),
+        };
+        self.save_to_cache(&cache)?;
+
+        self.current_file = Some(path.to_path_buf());
+        self.file_content = Some(content);
+        self.mime_type = Some(mime_type);
+        self.current_file_info = Some(final_file_name);
 
         pb.finish_and_clear();
         println!("{}", "✨ File ready for chat".bright_green().bold());
@@ -349,8 +370,23 @@ impl FileChatManager {
 
         // Add file content based on whether we have a Google AI file or local file
         if let Some(file_name) = &self.current_file_info {
-            // Use Google AI file reference - don't add "files/" prefix
-            parts.push(Part::file_data(mime_type.clone(), file_name.clone()));
+            // Get the full file information to use the URI
+            let pb = PrettyPrinter::print_thinking();
+            match self.file_manager.list_files().await {
+                Ok(files) => {
+                    if let Some(file_info) = files.iter().find(|f| f.name == *file_name) {
+                        parts.push(Part::file_data(mime_type.clone(), file_info.uri.clone()));
+                    } else {
+                        pb.finish_and_clear();
+                        return Err(ChatError::FileProcessing("File not found".into()));
+                    }
+                }
+                Err(e) => {
+                    pb.finish_and_clear();
+                    return Err(ChatError::FileManagement(e));
+                }
+            }
+            pb.finish_and_clear();
         } else {
             // Fallback to direct content
             if mime_type.starts_with("text/") {
@@ -371,7 +407,12 @@ impl FileChatManager {
             .contents(vec![Content { role: None, parts }])
             .build();
 
-        match self.model.generate_response(request).await {
+        // Use a single progress bar for the entire chat operation
+        let pb = PrettyPrinter::print_thinking();
+        let result = self.model.generate_response(request).await;
+        pb.finish_and_clear();
+
+        match result {
             Ok(response) => {
                 let response_text = response.text();
                 self.chat_session.add_message("assistant", &response_text);
@@ -406,6 +447,23 @@ impl FileChatManager {
             })
         } else {
             None
+        }
+    }
+
+    pub async fn list_uploaded_files(&self) -> Result<(), ChatError> {
+        println!("{}", "📋 Fetching uploaded files...".bright_yellow().bold());
+        let pb = PrettyPrinter::print_thinking();
+
+        match self.file_manager.list_files().await {
+            Ok(files) => {
+                pb.finish_and_clear();
+                PrettyPrinter::print_uploaded_files(&files);
+                Ok(())
+            }
+            Err(e) => {
+                pb.finish_and_clear();
+                Err(ChatError::FileManagement(e))
+            }
         }
     }
 }
@@ -456,6 +514,7 @@ Available Commands:
 /help     - Show this help message
 /load     - Load a new file
 /info     - Show current file information
+/list     - List all uploaded files
 /clear    - Clear chat history
 /exit     - Exit the program
 "#
@@ -481,6 +540,32 @@ Available Commands:
             "Type:".yellow().bold(),
             info.mime_type.bright_yellow()
         );
+    }
+
+    pub fn print_uploaded_files(files: &[GeminiFileInfo]) {
+        if files.is_empty() {
+            println!("{}", "No files uploaded".bright_yellow());
+            return;
+        }
+
+        println!("\n{}", "📁 Uploaded Files".bright_blue().bold());
+        println!("{}", "═".repeat(50).bright_blue());
+
+        for file in files {
+            println!("{} {}", "•".bright_magenta(), file.name.bright_white());
+            println!(
+                "  {:<15} {}",
+                "Type:".white(),
+                file.mime_type.bright_white()
+            );
+            println!(
+                "  {:<15} {}",
+                "State:".white(),
+                format!("{:?}", file.state).bright_white()
+            );
+            println!("  {:<15} {}", "URI:".white(), &file.uri.bright_white());
+            println!();
+        }
     }
 
     pub fn print_chat_message(role: &str, message: &str) {
@@ -559,6 +644,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     PrettyPrinter::print_file_info(&info);
                 } else {
                     println!("No file loaded");
+                }
+            }
+            "/list" => {
+                if let Err(e) = chat_manager.list_uploaded_files().await {
+                    PrettyPrinter::print_error(&e);
                 }
             }
             "/clear" => {
