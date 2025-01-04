@@ -1,13 +1,15 @@
 use colored::*;
 use dotenv::dotenv;
+use futures::StreamExt;
 use gemini_ai_rust::{
     client::GenerativeModel,
     error::GoogleGenerativeAIError,
-    models::{EmbedContentRequest, TaskType},
+    models::{Content, EmbedContentRequest, Part, Request, TaskType},
 };
 use indicatif::{ProgressBar, ProgressStyle};
-use pdf_extract::extract_text;
+use pdf_extract::extract_text_by_pages;
 use rayon::prelude::*;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -102,9 +104,10 @@ pub enum ChatError {
 
 // Text chunk with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct TextChunk {
+pub struct TextChunk {
     content: String,
     section: usize,
+    page: usize,
     embedding: Option<Vec<f32>>,
 }
 
@@ -246,6 +249,7 @@ impl DocumentChatManager {
             chunks.push(TextChunk {
                 content: chunk,
                 section: current_section,
+                page: 0,
                 embedding: None,
             });
 
@@ -339,6 +343,20 @@ impl DocumentChatManager {
         Ok(())
     }
 
+    fn extract_text_from_pages(pdf_path: &str) -> Result<Vec<PageInfo>, ChatError> {
+        extract_text_by_pages(pdf_path)?
+            .into_iter()
+            .enumerate()
+            .map(|(idx, page_text)| {
+                Ok(PageInfo {
+                    page_number: idx + 1,
+                    content: page_text.clone(),
+                    word_count: page_text.split_whitespace().count(),
+                })
+            })
+            .collect()
+    }
+
     pub fn process_pdf(&mut self, path: &str) -> Result<(), ChatError> {
         self.manage_cache_size()?;
         self.current_pdf_path = Some(path.to_string());
@@ -349,19 +367,43 @@ impl DocumentChatManager {
             return Ok(());
         }
 
-        // Process the PDF in chunks
-        let text = extract_text(path)?;
-        if text.is_empty() {
-            return Err(ChatError::NoContent);
+        // Extract text by pages
+        let pages = Self::extract_text_from_pages(path)?;
+
+        // Process each page
+        let mut current_section = 1;
+        let mut chunks = Vec::new();
+
+        for page in pages {
+            let text = page.content;
+            let words: Vec<&str> = text.split_whitespace().collect();
+            let overlap = (self.chunk_size * OVERLAP_PERCENTAGE) / 100;
+
+            let mut i = 0;
+            while i < words.len() {
+                let end = (i + self.chunk_size).min(words.len());
+                let chunk = words[i..end].join(" ");
+
+                chunks.push(TextChunk {
+                    content: chunk,
+                    section: current_section,
+                    page: page.page_number,
+                    embedding: None,
+                });
+
+                i += self.chunk_size - overlap;
+                if chunks.len() % 5 == 0 {
+                    current_section += 1;
+                }
+            }
         }
 
-        self.process_text(&text)?;
-        self.save_cache(path, &text)?;
-
+        self.chunks = chunks;
+        self.save_cache(path, "")?;
         Ok(())
     }
 
-    async fn find_relevant_chunks(
+    pub async fn find_relevant_chunks(
         &self,
         query: &str,
         limit: usize,
@@ -397,7 +439,7 @@ impl DocumentChatManager {
         self.chat_session = Some(ChatSession::new(10)); // Keep last 10 messages
     }
 
-    pub async fn chat(&mut self, user_input: &str) -> Result<String, ChatError> {
+    pub async fn chat(&mut self, user_input: &str) -> Result<(), ChatError> {
         if self.chat_session.is_none() {
             self.start_chat_session();
         }
@@ -405,33 +447,63 @@ impl DocumentChatManager {
         let relevant_chunks = self.find_relevant_chunks(user_input, 3).await?;
         let context = relevant_chunks
             .iter()
-            .map(|chunk| format!("Content from section {}: {}", chunk.section, chunk.content))
+            .map(|chunk| {
+                format!(
+                    "Content from page {} (section {}): {}",
+                    chunk.page, chunk.section, chunk.content
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n\n");
 
         let chat_session = self.chat_session.as_mut().unwrap();
-
-        // Add user message to chat history
         chat_session.add_message("user", user_input);
 
-        // Prepare prompt with context and chat history
         let prompt = format!(
             "You are a helpful assistant analyzing a document. Use the following context to answer the user's question.\n\n\
              Context from the document:\n{}\n\n\
              Chat history:\n{}\n\n\
-             Please provide a clear and concise answer based on the context.",
+             Please provide a clear and concise answer based on the context. \
+             When referring to content, mention the page number where it appears.",
             context,
             chat_session.get_formatted_history()
         );
 
-        // Get response from the model using generateContent
-        let response = self.model.send_message(&prompt).await?;
-        let answer = response.text();
+        let request = Request::builder()
+            .contents(vec![Content {
+                role: None,
+                parts: vec![Part::Text { text: prompt }],
+            }])
+            .build();
 
-        // Add assistant's response to chat history
-        chat_session.add_message("assistant", &answer);
+        let mut stream = self.model.stream_generate_response(request).await?;
+        let mut accumulated_response = String::new();
+        let mut first_chunk = true;
 
-        Ok(answer)
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(response) => {
+                    if !first_chunk {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                    }
+                    let text = response.text();
+                    accumulated_response.push_str(&text);
+                    PrettyPrinter::print_streaming_message(&text, true);
+                    first_chunk = false;
+                }
+                Err(e) => {
+                    PrettyPrinter::print_error(&e);
+                    break;
+                }
+            }
+        }
+
+        // Add the complete response to chat history
+        if !accumulated_response.is_empty() {
+            chat_session.add_message("assistant", &accumulated_response);
+        }
+
+        Ok(())
     }
 
     pub fn get_stats(&self) -> Result<DocumentStats, ChatError> {
@@ -527,6 +599,13 @@ pub struct ChatExport {
     document_stats: DocumentStats,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PageInfo {
+    page_number: usize,
+    content: String,
+    word_count: usize,
+}
+
 fn calculate_similarity(a: &[f32], b: &[f32]) -> f32 {
     let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -606,7 +685,7 @@ impl PrettyPrinter {
     pub fn print_chat_message(role: &str, message: &str) {
         let (prefix, color) = match role {
             "user" => ("You:", "blue"),
-            "assistant" => ("Assistant:", "green"),
+            "model" => ("Model:", "green"),
             "system" => ("System:", "yellow"),
             _ => ("Unknown:", "red"),
         };
@@ -619,6 +698,20 @@ impl PrettyPrinter {
             _ => println!("{} {}", prefix.red().bold(), message),
         }
         println!("{}", "─".repeat(100).bright_black());
+    }
+
+    pub fn print_streaming_message(text: &str, page_references: bool) {
+        if page_references {
+            // Highlight page numbers in the format "page X" or "Page X"
+            let re = Regex::new(r"([Pp]age\s+\d+)").unwrap();
+            let text = re.replace_all(text, |caps: &regex::Captures| {
+                format!("{}", caps[1].bright_cyan().bold())
+            });
+            print!("{}", text.white());
+        } else {
+            print!("{}", text.white());
+        }
+        std::io::stdout().flush().unwrap();
     }
 
     pub fn print_success(message: &str) {
@@ -659,7 +752,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     PrettyPrinter::print_banner();
     PrettyPrinter::print_help();
 
-    // Get PDF path from user
     println!(
         "\n{}",
         "📂 Please enter the path to your PDF file:".bright_yellow()
@@ -668,7 +760,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     std::io::stdin().read_line(&mut pdf_path)?;
     let pdf_path = pdf_path.trim();
 
-    // Check if file exists
     if !std::path::Path::new(pdf_path).exists() {
         println!("{}", "❌ File not found!".bright_red());
         return Ok(());
@@ -676,15 +767,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("\n{}", "🔄 Initializing...".bright_blue());
 
-    let model_generation = "gemini-1.5-flash";
-    let model_embedding = "embedding-001";
-
-    // Initialize the document manager
-    let model = GenerativeModel::from_env(model_generation)?;
-    let mut doc_manager = DocumentChatManager::new(model, model_embedding, 200);
+    let model = GenerativeModel::from_env("gemini-1.5-pro")?;
+    let mut doc_manager = DocumentChatManager::new(model.clone(), "embedding-001", 200);
     PrettyPrinter::print_success("Document manager initialized");
 
-    // Process the PDF
     println!("\n{}", "📄 Processing PDF...".bright_blue());
     match doc_manager.process_pdf(pdf_path) {
         Ok(_) => PrettyPrinter::print_success("PDF processed successfully"),
@@ -694,7 +780,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Generate embeddings
     println!("\n{}", "🧠 Generating embeddings...".bright_blue());
     match doc_manager.generate_embeddings().await {
         Ok(_) => PrettyPrinter::print_success("Embeddings generated successfully"),
@@ -704,7 +789,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Start chat session
     doc_manager.start_chat_session();
     PrettyPrinter::print_success("Chat session started");
 
@@ -714,7 +798,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
     println!("{}", "═".repeat(50).bright_black());
 
-    // Interactive chat loop
     loop {
         print!("\n{} ", "You:".blue().bold());
         std::io::stdout().flush()?;
@@ -768,12 +851,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 let pb = PrettyPrinter::print_thinking();
+                println!("\n{}", "─".repeat(80).bright_black());
+                println!("{}", "🤖 Response:".green().bold());
+                println!("{}", "─".repeat(80).bright_black());
 
                 match doc_manager.chat(input).await {
-                    Ok(response) => {
-                        pb.finish_and_clear();
-                        PrettyPrinter::typing_effect(&response);
-                    }
+                    Ok(_) => println!("\n{}", "─".repeat(80).bright_black()),
                     Err(e) => {
                         pb.finish_and_clear();
                         PrettyPrinter::print_error(&e);
