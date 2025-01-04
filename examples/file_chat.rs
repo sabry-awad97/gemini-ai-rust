@@ -25,6 +25,10 @@ use thiserror::Error;
 const MAX_CACHE_SIZE_MB: u64 = 1000; // 1 GB
 const CACHE_DIR: &str = ".file_chat_cache";
 
+const SYSTEM_PROMPT: &str = r#"You are an AI assistant that helps users understand and analyze files. 
+You will be provided with the content of a file and should answer questions about it accurately and concisely.
+If you're not sure about something, say so rather than making assumptions."#;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct Config {
     google_api_key: String,
@@ -363,8 +367,8 @@ impl FileChatManager {
 
         let mut parts = vec![Part::Text {
             text: format!(
-                "Context: I'm looking at a file of type {}. Here's my question: {}",
-                mime_type, user_input
+                "{}\nContext: I'm looking at a file of type {}. Here's my question: {}",
+                SYSTEM_PROMPT, mime_type, user_input
             ),
         }];
 
